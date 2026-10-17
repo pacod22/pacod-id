@@ -21,7 +21,15 @@
 		footer?: Snippet;
 	}
 
-	let { title, subtitle, brand = 'acme', monogram, wordmark, children, footer }: Props = $props();
+	let {
+		title,
+		subtitle,
+		brand = 'gateway',
+		monogram,
+		wordmark,
+		children,
+		footer
+	}: Props = $props();
 	const mark = $derived(wordmark ?? BRANDS[brand].wordmark);
 </script>
 

@@ -18,7 +18,7 @@ for (const [name, app] of Object.entries(APPS)) {
 			await page.goto(app);
 			await expect(page.locator('#who')).toHaveText('signed out');
 			await page.getByRole('link', { name: 'Sign in' }).click();
-			await page.waitForURL(new RegExp(`^${REALMS.acme}/login\\?flow=`));
+			await page.waitForURL(new RegExp(`^${REALMS.gateway}/login\\?flow=`));
 			await signIn(page, ADMIN.email, ADMIN.password);
 			await page.waitForURL(`${app}/`);
 			await expect(page.locator('#who')).toContainText(ADMIN.email);
@@ -43,7 +43,7 @@ for (const [name, app] of Object.entries(APPS)) {
 			expect(later, 'no refresh token was taken for stolen').toBe(200);
 
 			// Signing out on pacod-id's own pages: the application hears of it by back-channel.
-			await page.goto(`${REALMS.acme}/account/sessions`);
+			await page.goto(`${REALMS.gateway}/account/sessions`);
 			const mine = page.locator('tbody tr').filter({ hasText: 'this device' });
 			await mine.getByRole('button', { name: 'Sign out' }).click();
 			// The page leaves once pacod-id has ended the session (leaving earlier cancels it).
@@ -68,7 +68,7 @@ for (const [name, app] of Object.entries(APPS)) {
 			await page.waitForURL(new RegExp(`^${app}/(\\?.*)?$`));
 			await expect(page.locator('#who')).toHaveText('signed out');
 			// The single sign-on session ended with it.
-			await page.goto(`${REALMS.acme}/account`);
+			await page.goto(`${REALMS.gateway}/account`);
 			await page.waitForURL(/\/login\?flow=/);
 		});
 	});

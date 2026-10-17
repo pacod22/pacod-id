@@ -19,9 +19,9 @@ rm -rf e2e/screenshots e2e/test-results
 
 npm run build -w ui >/dev/null
 npm run build -w packages/client -w packages/sveltekit >/dev/null
-ID_ISSUER=http://id.acme.e2e.test:27370 npm run build -w fixtures/kit2 -w fixtures/kit3 >/dev/null
+ID_ISSUER=http://id.gateway.e2e.test:27370 npm run build -w fixtures/kit2 -w fixtures/kit3 >/dev/null
 # SvelteKit 3 fixes the origin when building: the container's copy, with its own address.
-ID_ISSUER=http://id.acme.e2e.test:27370 FIXTURE_ORIGIN=http://kit3d.e2e.test:27393 FIXTURE_OUT=build-container \
+ID_ISSUER=http://id.gateway.e2e.test:27370 FIXTURE_ORIGIN=http://kit3d.e2e.test:27393 FIXTURE_OUT=build-container \
   npm run build -w fixtures/kit3 >/dev/null
 cargo build -q -p pacod-id -p pacod-id-mock-idp
 
@@ -33,14 +33,14 @@ cleanup() {
 trap cleanup EXIT
 
 # Test secrets only.
-GOOGLE_ACME=e2e-google-secret-of-acme
+GOOGLE_GW=e2e-google-secret-of-the-gateway
 GOOGLE_BAZAAR=e2e-google-secret-of-bazaar
 
 node e2e/app.mjs &
 children+=($!)
 
 PID_MOCK_ISSUER=http://127.0.0.1:27380 PID_MOCK_LISTEN=127.0.0.1:27380 \
-  PID_MOCK_CLIENTS="acme-google:$GOOGLE_ACME,bazaar-google:$GOOGLE_BAZAAR" \
+  PID_MOCK_CLIENTS="gw-google:$GOOGLE_GW,bazaar-google:$GOOGLE_BAZAAR" \
   target/debug/pacod-id-mock-idp >e2e/mock.log 2>&1 &
 children+=($!)
 
@@ -50,12 +50,12 @@ env -i PATH="$PATH" HOME="$HOME" \
   PID_KEK=ZTJlLWtleS1lbmNyeXB0aW9uLWtleS0zMi1ieXRlcyE= \
   PID_TOKEN_PEPPER=e2e-token-pepper-sixteen-bytes-or-more \
   E2E_DEMO_SECRET=e2e-demo-client-secret-0123456789abcdef \
-  E2E_GOOGLE_ACME="$GOOGLE_ACME" E2E_GOOGLE_BAZAAR="$GOOGLE_BAZAAR" \
+  E2E_GOOGLE_GATEWAY="$GOOGLE_GW" E2E_GOOGLE_BAZAAR="$GOOGLE_BAZAAR" \
   PID_PUBLIC_LISTEN=127.0.0.1:27370 PID_INTERNAL_LISTEN=127.0.0.1:27371 PID_METRICS_LISTEN=127.0.0.1:27372 \
   PID_UI_DIR=ui/build \
   PID_SMTP_HOST=127.0.0.1 PID_SMTP_PORT=27325 PID_SMTP_TLS=none PID_EMAIL_FROM_ADDRESS=id@e2e.test \
   PID_BOOTSTRAP_ADMIN_EMAIL=root@e2e.test PID_BOOTSTRAP_ADMIN_PASSWORD="the e2e bootstrap passphrase" \
-  PID_BOOTSTRAP_ADMIN_ROLES=id.admin PID_BOOTSTRAP_ADMIN_REALM=acme \
+  PID_BOOTSTRAP_ADMIN_ROLES=id.admin PID_BOOTSTRAP_ADMIN_REALM=gateway \
   PID_ARGON2_M_KIB=8192 PID_LOG_FORMAT=text \
   target/debug/pacod-id serve >e2e/server.log 2>&1 &
 children+=($!)
@@ -69,19 +69,19 @@ curl -sf http://127.0.0.1:27372/readyz >/dev/null || { echo "pacod-id did not st
 # The fixture applications: Kit 2 with sessions in memory, Kit 3 with sealed cookies, and the
 # Kit 3 build again in a container that reaches pacod-id through its internal address only.
 env -i PATH="$PATH" HOST=127.0.0.1 PORT=27391 ORIGIN=http://kit2.e2e.test:27391 APP_ORIGIN=http://kit2.e2e.test:27391 \
-  ID_ISSUER=http://id.acme.e2e.test:27370 ID_INTERNAL_URL=http://127.0.0.1:27371 ID_CLIENT_ID=demo-kit2 \
+  ID_ISSUER=http://id.gateway.e2e.test:27370 ID_INTERNAL_URL=http://127.0.0.1:27371 ID_CLIENT_ID=demo-kit2 \
   ID_CLIENT_SECRET=e2e-demo-client-secret-0123456789abcdef APP_SESSION_SECRET=e2e-fixture-session-secret-0123456789 \
   APP_STORE=memory REFRESH_BEFORE=299 node fixtures/kit2/build >e2e/kit2.log 2>&1 &
 children+=($!)
 env -i PATH="$PATH" HOST=127.0.0.1 PORT=27392 ORIGIN=http://kit3.e2e.test:27392 APP_ORIGIN=http://kit3.e2e.test:27392 \
-  ID_ISSUER=http://id.acme.e2e.test:27370 ID_INTERNAL_URL=http://127.0.0.1:27371 ID_CLIENT_ID=demo-kit3 \
+  ID_ISSUER=http://id.gateway.e2e.test:27370 ID_INTERNAL_URL=http://127.0.0.1:27371 ID_CLIENT_ID=demo-kit3 \
   ID_CLIENT_SECRET=e2e-demo-client-secret-0123456789abcdef APP_SESSION_SECRET=e2e-fixture-session-secret-0123456789 \
   REFRESH_BEFORE=299 node fixtures/kit3/build >e2e/kit3.log 2>&1 &
 children+=($!)
 docker run -d --name pid-e2e-kit3d -p 127.0.0.1:27393:3000 \
   -v "$PWD/fixtures/kit3/build-container:/app/build:ro" -v "$PWD/fixtures/kit3/package.json:/app/package.json:ro" -w /app \
   -e PORT=3000 -e ORIGIN=http://kit3d.e2e.test:27393 -e APP_ORIGIN=http://kit3d.e2e.test:27393 \
-  -e ID_ISSUER=http://id.acme.e2e.test:27370 -e ID_INTERNAL_URL=http://host.docker.internal:27371 \
+  -e ID_ISSUER=http://id.gateway.e2e.test:27370 -e ID_INTERNAL_URL=http://host.docker.internal:27371 \
   -e ID_CLIENT_ID=demo-kit3d -e ID_CLIENT_SECRET=e2e-demo-client-secret-0123456789abcdef \
   -e APP_SESSION_SECRET=e2e-fixture-session-secret-0123456789 -e REFRESH_BEFORE=299 \
   node:24-alpine node build >/dev/null

@@ -9,7 +9,7 @@ use reqwest::Method;
 use serde_json::{Value, json};
 use sqlx::Row;
 
-const CORE: &str = "a-secret-for-acme-core-0123456789";
+const CORE: &str = "a-secret-for-the-gateway-core-0123456789";
 
 fn manifest(name: &str) -> Value {
     let text = std::fs::read_to_string(format!("{}/tests/fixtures/{name}.yaml", env!("CARGO_MANIFEST_DIR"))).unwrap();
@@ -35,7 +35,7 @@ async fn exchange(id: &TestId, subject: &str) -> String {
     let r = id
         .http
         .post(format!("{}/oidc/token", id.internal))
-        .basic_auth("acme-core", Some(CORE))
+        .basic_auth("gw-core", Some(CORE))
         .form(&[
             ("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange"),
             ("subject_token", subject),
@@ -93,22 +93,22 @@ async fn mentions(id: &TestId, needle: &str) -> Vec<(String, String, i64)> {
 #[tokio::test]
 async fn deleting_an_account_leaves_nothing_of_the_person() {
     let id = TestId::start().await;
-    id.service_secret("acme-core", CORE).await;
-    let put = |path: &'static str, body: Value| id.internal_call(Method::PUT, path, "acme-core", CORE, Some(body));
-    put("/internal/v1/catalog/acme", json!({ "manifest": manifest("acme") })).await;
+    id.service_secret("gw-core", CORE).await;
+    let put = |path: &'static str, body: Value| id.internal_call(Method::PUT, path, "gw-core", CORE, Some(body));
+    put("/internal/v1/catalog/gw", json!({ "manifest": manifest("gw") })).await;
     put("/internal/v1/organisations/org_1", json!({ "slug": "acme" })).await;
     put("/internal/v1/organisations/org_2", json!({ "slug": "other" })).await;
     let root = common::account(&id, "root@example.com").await.id;
-    bind(&id, &root, "acme.platform_admin", ScopeRef::platform()).await;
+    bind(&id, &root, "gw.platform_admin", ScopeRef::platform()).await;
     let bob = common::account(&id, "bob@example.com").await.id;
     let vic = common::account(&id, "vic@example.com").await;
     let v_id = vic.id.clone();
-    bind(&id, &v_id, "acme.viewer", ScopeRef::organisation("org_1")).await;
-    bind(&id, &v_id, "acme.org_admin", ScopeRef::organisation("org_2")).await;
+    bind(&id, &v_id, "gw.viewer", ScopeRef::organisation("org_1")).await;
+    bind(&id, &v_id, "gw.org_admin", ScopeRef::organisation("org_2")).await;
     bind(&id, &v_id, "id.admin", ScopeRef::platform()).await;
 
     // Vic's traces: sessions, grants, a device, a failed sign-in, links, consents, a Google
-    // link, an id in acme, mail, an invitation to the address, and things Vic did.
+    // link, an id in the gateway, mail, an invitation to the address, and things Vic did.
     let mut vb = Browser::new(&id);
     let (vic_t, _) = facade(&id, &mut vb, "vic@example.com").await;
     let mut other = Browser::new(&id);
@@ -121,9 +121,9 @@ async fn deleting_an_account_leaves_nothing_of_the_person() {
             json!({ "email": "vic@example.com", "password": "wrong" }),
         )
         .await;
-    id.store().consent(&v_id, "acme", "terms", "1").await.unwrap();
+    id.store().consent(&v_id, "gateway", "terms", "1").await.unwrap();
     id.sql(&format!(
-        "INSERT INTO account_external_ids (source, external_id, account_id) VALUES ('acme', 'usr_old_vic', '{v_id}')"
+        "INSERT INTO account_external_ids (source, external_id, account_id) VALUES ('gw', 'usr_old_vic', '{v_id}')"
     ))
     .await;
     id.sql(&format!(
@@ -139,7 +139,7 @@ async fn deleting_an_account_leaves_nothing_of_the_person() {
         &vic_t,
         Method::PUT,
         &format!("/admin/v1/scopes/organisation/org_2/members/{bob}"),
-        Some(json!({ "role": "acme.viewer" })),
+        Some(json!({ "role": "gw.viewer" })),
     )
     .await;
     assert_eq!(s, 200, "{v}");
@@ -148,7 +148,7 @@ async fn deleting_an_account_leaves_nothing_of_the_person() {
         &vic_t,
         Method::POST,
         "/admin/v1/invitations",
-        Some(json!({ "email": "zoe@example.com", "role": "acme.viewer", "scope": "organisation:org_2" })),
+        Some(json!({ "email": "zoe@example.com", "role": "gw.viewer", "scope": "organisation:org_2" })),
     )
     .await;
     assert_eq!(s, 201, "{v}");
@@ -159,7 +159,7 @@ async fn deleting_an_account_leaves_nothing_of_the_person() {
         &root_t,
         Method::POST,
         "/admin/v1/invitations",
-        Some(json!({ "email": "vic@example.com", "role": "acme.viewer", "scope": "organisation:org_1" })),
+        Some(json!({ "email": "vic@example.com", "role": "gw.viewer", "scope": "organisation:org_1" })),
     )
     .await;
     assert_eq!(s, 201);
@@ -177,7 +177,7 @@ async fn deleting_an_account_leaves_nothing_of_the_person() {
     let (s, v) = call(&id, &root_t, Method::DELETE, &format!("/admin/v1/accounts/{v_id}"), None).await;
     assert_eq!(s, 200, "{v}");
 
-    // Nothing of Vic is left, except the tombstone until acme confirms, and the feed's
+    // Nothing of Vic is left, except the tombstone until the gateway confirms, and the feed's
     // own history (7 days) that tells the products.
     let allowed = |t: &str| matches!(t, "account_deletions" | "authz_changes" | "backchannel_outbox");
     let left: Vec<_> = mentions(&id, &v_id).await.into_iter().filter(|(t, _, _)| !allowed(t)).collect();
@@ -190,7 +190,7 @@ async fn deleting_an_account_leaves_nothing_of_the_person() {
         .await
         .unwrap();
     assert_eq!(event.get::<String, _>("kind"), "principal.deleted");
-    assert_eq!(event.get::<Value, _>("payload")["external_ids"], json!({ "acme": "usr_old_vic" }));
+    assert_eq!(event.get::<Value, _>("payload")["external_ids"], json!({ "gw": "usr_old_vic" }));
     // What Vic did stays, done by "deleted account".
     let by: Vec<String> = sqlx::query_scalar("SELECT DISTINCT created_by FROM role_bindings WHERE principal_id = $1")
         .bind(&bob)
@@ -207,28 +207,16 @@ async fn deleting_an_account_leaves_nothing_of_the_person() {
     let (s, _) = call(&id, &vic_t, Method::GET, "/admin/v1/bindings", None).await;
     assert_eq!(s, 401);
 
-    // Acme finds the deletion in its snapshot and confirms it.
+    // The gateway finds the deletion in its snapshot and confirms it.
     let (_, snap) =
-        id.internal_call(Method::GET, "/internal/v1/authz/snapshot?product=acme", "acme-core", CORE, None).await;
+        id.internal_call(Method::GET, "/internal/v1/authz/snapshot?product=gw", "gw-core", CORE, None).await;
     assert_eq!(snap["deleted"], json!([v_id]));
     let (s, _) = id
-        .internal_call(
-            Method::POST,
-            &format!("/internal/v1/deletions/{v_id}/done?product=shop"),
-            "acme-core",
-            CORE,
-            None,
-        )
+        .internal_call(Method::POST, &format!("/internal/v1/deletions/{v_id}/done?product=shop"), "gw-core", CORE, None)
         .await;
     assert_eq!(s, 403, "for its own product only");
     let (s, _) = id
-        .internal_call(
-            Method::POST,
-            &format!("/internal/v1/deletions/{v_id}/done?product=acme"),
-            "acme-core",
-            CORE,
-            None,
-        )
+        .internal_call(Method::POST, &format!("/internal/v1/deletions/{v_id}/done?product=gw"), "gw-core", CORE, None)
         .await;
     assert_eq!(s, 204);
     let tombstones: i64 =

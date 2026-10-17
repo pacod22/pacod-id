@@ -1,4 +1,4 @@
-//! Service tokens (`pidt_`, and acme's imported `acma_`), checked by pacod-id's
+//! Service tokens (`pidt_`, and the gateway's imported `pgwa_`), checked by pacod-id's
 //! introspection and cached 60 seconds by the token's SHA-256. A revoked token,
 //! or a disabled or deleted service account, leaves the cache as soon as the feed says so.
 
@@ -67,7 +67,7 @@ impl Introspector {
 
     /// The service account of a token, or `None` when pacod-id does not take it.
     pub async fn check(&self, token: &str) -> Result<Option<ServicePrincipal>, ApiError> {
-        // Only what looks like a service token (`pidt_…`, or a product's own like `acma_…`)
+        // Only what looks like a service token (`pidt_…`, or a product's own like `pgwa_…`)
         // costs a call: random strings neither reach pacod-id nor fill the cache.
         if !looks_like_service_token(token) {
             return Ok(None);
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn only_token_shapes_are_introspected() {
         assert!(super::looks_like_service_token(&format!("pidt_01a1_{}", "x".repeat(43))));
-        assert!(super::looks_like_service_token(&format!("acma_{}", "A".repeat(40))));
+        assert!(super::looks_like_service_token(&format!("pgwa_{}", "A".repeat(40))));
         for bad in ["", "Bearer", "eyJhbGciOi.x.y", "pidt_", "PIDT_abcdefghijklmnopqr", "pidt_has spaces in it here"] {
             assert!(!super::looks_like_service_token(bad), "{bad}");
         }

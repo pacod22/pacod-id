@@ -37,7 +37,7 @@ secrets:
   #   PID_TOKEN_PEPPER     HMAC pepper of the opaque tokens, at least 16 characters
   # and may hold:
   #   PID_KEK_OLD                    earlier key-encryption keys, "id=base64key,id=base64key"
-  #   PID_LEGACY_PEPPERS             products' peppers for their old tokens, "acme:<pepper>"
+  #   PID_LEGACY_PEPPERS             products' peppers for their old tokens, "gw:<pepper>"
   #   PID_SMTP_PASSWORD              password of the SMTP account (email.smtpUsername)
   #   PID_BOOTSTRAP_ADMIN_PASSWORD   password of the first administrator (bootstrapAdmin)
   #   <secret_env of a client or a realm's google block>
@@ -62,12 +62,12 @@ secrets:
   # secrets set with `pacod-id clients secret`, and the known-device marks (a new-sign-in mail
   # follows at each person's next sign-in).
   tokenPepper: ""
-  # The products' peppers, for their tokens issued before pacod-id: "acme:<ACME_KEY_PEPPER>".
+  # The products' peppers, for their tokens issued before pacod-id: "gw:<PGW_KEY_PEPPER>".
   legacyPeppers: ""
   smtpPassword: ""
   bootstrapAdminPassword: ""
   # Client and Google secrets, by the variable names the configuration gives them:
-  #   ACME_CONSOLE_SECRET: "…"
+  #   PGW_UI_CLIENT_SECRET: "…"
   extra: {}
 
 # The key id of secrets.kek (PID_KEK_ID). Change it with the key (runbook, key rotation).
@@ -164,7 +164,7 @@ networkPolicy:
   # The internal port: the products' services and BFFs. Required when enabled; nothing reaches
   # it otherwise.
   #  - namespaceSelector:
-  #      matchLabels: { kubernetes.io/metadata.name: acme }
+  #      matchLabels: { kubernetes.io/metadata.name: pacod-gw }
   internalFrom: []
   # The metrics port: the scrapers. The kubelet's probes are not subject to policies.
   metricsFrom: []

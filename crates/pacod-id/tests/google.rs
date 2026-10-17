@@ -6,7 +6,7 @@ use common::{Browser, TestId, authorize_url, param, pkce};
 use pacod_id_mock_idp::{Identity, MockIdp};
 use serde_json::json;
 
-const ACME_SECRET: &str = "google-secret-of-acme-realm";
+const GATEWAY_SECRET: &str = "google-secret-of-the-gateway-realm";
 const BAZAAR_SECRET: &str = "google-secret-of-the-bazaar-realm";
 const BAZAAR_REDIRECT: &str = "https://bazaar.example/native/oidc/callback";
 
@@ -19,7 +19,7 @@ struct World {
 async fn world() -> World {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let issuer = format!("http://{}", listener.local_addr().unwrap());
-    let google = MockIdp::new(&issuer, &[("acme-client", ACME_SECRET), ("bazaar-client", BAZAAR_SECRET)]).unwrap();
+    let google = MockIdp::new(&issuer, &[("gw-client", GATEWAY_SECRET), ("bazaar-client", BAZAAR_SECRET)]).unwrap();
     tokio::spawn(google.clone().serve(listener));
     let db = common::fresh_database().await;
     let id = TestId::start_full(
@@ -27,8 +27,8 @@ async fn world() -> World {
         |port| {
             common::config_for(port)
                 .replace(
-                    "accounts_managed_by = [\"acme.platform_admin\"]\n",
-                    &format!("accounts_managed_by = [\"acme.platform_admin\"]\ngoogle = {{ client_id = \"acme-client\", secret_env = \"G1\", issuer = \"{issuer}\" }}\n"),
+                    "accounts_managed_by = [\"gw.platform_admin\"]\n",
+                    &format!("accounts_managed_by = [\"gw.platform_admin\"]\ngoogle = {{ client_id = \"gw-client\", secret_env = \"G1\", issuer = \"{issuer}\" }}\n"),
                 )
                 .replace(
                     "self_signup = true\n",
@@ -36,7 +36,7 @@ async fn world() -> World {
                 )
         },
         |boot| {
-            boot.google_secrets.insert("acme".into(), ACME_SECRET.into());
+            boot.google_secrets.insert("gateway".into(), GATEWAY_SECRET.into());
             boot.google_secrets.insert("bazaar".into(), BAZAAR_SECRET.into());
         },
     )
@@ -49,7 +49,7 @@ fn local(url: &str) -> String {
     url.replacen("://localhost:", "://127.0.0.1:", 1)
 }
 
-/// A sign-in flow in `b` for the console (acme) or the bazaar app.
+/// A sign-in flow in `b` for the console (gateway) or the bazaar app.
 async fn flow(id: &TestId, b: &mut Browser, bazaar: bool) -> String {
     let (_, challenge) = pkce();
     let extra: Vec<(&str, &str)> =
@@ -111,7 +111,7 @@ async fn a_new_bazaar_user_signs_up_with_google_and_comes_back_by_subject() {
 }
 
 #[tokio::test]
-async fn acme_makes_accounts_by_invitation_only() {
+async fn the_gateway_makes_accounts_by_invitation_only() {
     let World { id, google } = world().await;
     let mut b = Browser::new(&id);
     let f = flow(&id, &mut b, false).await;
@@ -126,7 +126,7 @@ async fn acme_makes_accounts_by_invitation_only() {
 
     // With a pending invitation, Google makes the account.
     id.sql("INSERT INTO invitations (id, token_hash, email, role, scope_type, scope_id, realm, expires_at)
-            VALUES ('inv_1', '\\x01', 'eve@example.com', 'acme.viewer', 'platform', '', 'acme', now() + interval '1 day')")
+            VALUES ('inv_1', '\\x01', 'eve@example.com', 'gw.viewer', 'platform', '', 'gateway', now() + interval '1 day')")
         .await;
     let f = flow(&id, &mut b, false).await;
     google.queue(Identity::new("g-222", "eve@example.com", true));
@@ -203,7 +203,7 @@ async fn bad_answers_from_the_provider_are_refused() {
         json!({ "nonce": "another" }),
         json!({ "nonce": null }),
         json!({ "aud": "another-client" }),
-        json!({ "aud": ["acme-client", "another-client"], "azp": "another-client" }),
+        json!({ "aud": ["gw-client", "another-client"], "azp": "another-client" }),
         json!({ "iss": "https://evil.example" }),
         json!({ "exp": 1_000_000 }),
     ] {

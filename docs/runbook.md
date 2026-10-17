@@ -37,7 +37,6 @@ Contents:
 16. [Backup and restore](#16-backup-and-restore)
 17. [Upgrades](#17-upgrades)
 18. [Troubleshooting](#18-troubleshooting)
-19. [Taking over acme's people](#19-taking-over-acmes-people)
 
 All commands are run from the repository root. `dc` stands for the development stack's
 compose command, the same one the Makefile uses:
@@ -158,7 +157,7 @@ One `[[realm]]` per issuer host.
 |---|---|---|
 | `name` | required | Lowercase letters, digits, `-` and `_`, starting with a letter. |
 | `issuer` | required | The public URL people use, `https://host[:port]`, without path or trailing slash. It is the `iss` of every token of the realm. No two realms may share a host. `http` is accepted for development only (see below). |
-| `brand` | required | `acme`, `shop` or `bazaar`: the pages' theme and the mails' layout. |
+| `brand` | required | `gateway`, `shop` or `bazaar`: the pages' theme and the mails' layout. |
 | `locales` | `["en", "bg", "de", "ru"]` | Languages of the pages. Each must be one of those four. |
 | `default_locale` | `"en"` | Must be one of `locales`. |
 | `mail_locales` | `["bg", "en"]` | Every mail carries all of these, in this order. |
@@ -170,7 +169,7 @@ One `[[realm]]` per issuer host.
 | `verification_link_hours` | `24` | Lifetime of an address confirmation link. |
 | `reset_link_minutes` | `60` | Lifetime of a password reset link. |
 | `invitation_days` | `7` | Lifetime of an invitation. |
-| `accounts_managed_by` | `[]` | Roles whose holders create, disable and reset accounts in this realm, for example `["acme.platform_admin"]`. |
+| `accounts_managed_by` | `[]` | Roles whose holders create, disable and reset accounts in this realm, for example `["gw.platform_admin"]`. |
 | `terms_url`, `privacy_url` | none | When `terms_url` is set, a sign-up must accept the terms. |
 | `terms_version` | `"1"` | Recorded with the acceptance. |
 | `require_verified_email` | `true` | An account confirms its address before it signs in. Only applies when SMTP is configured (section 13). |
@@ -199,8 +198,8 @@ One `[[client]]` per application. There is no dynamic registration.
 | `post_logout_redirect_uris` | `[]` | Exact URIs a sign-out may return to. |
 | `backchannel_logout_uri` | none | Where pacod-id posts logout tokens (section 14). May be an internal address, such as `http://ui:3000/auth/backchannel-logout`. |
 | `initiate_login_uri` | none | Where the product starts a sign-in; the pages send people there after they accept an invitation. |
-| `audience` | none | Required for confidential and public clients: the product the access tokens are for (`aud`), for example `acme`. Required for service clients with `token_exchange`: the audience of the people's tokens it may exchange, its product's own (for `acme-core`, `acme`); tokens for any other audience are refused. |
-| `product` | none | For service clients: the product it speaks for (its catalogue, its scopes, its feed), for example `acme`. A service client without one only exchanges tokens and introspects, for example a product's tester taking delegated grants: the internal API refuses it, and it may end only sessions it had a grant in. |
+| `audience` | none | Required for confidential and public clients: the product the access tokens are for (`aud`), for example `pacod-gw`. Required for service clients with `token_exchange`: the audience of the people's tokens it may exchange, its product's own (the gateway's core: `pacod-gw`); tokens for any other audience are refused. |
+| `product` | none | For service clients: the product it speaks for (its catalogue, its scopes, its feed), for example `gw`. A service client without one only exchanges tokens and introspects, for example a product's tester taking delegated grants: the internal API refuses it, and it may end only sessions it had a grant in. |
 | `grants` | by kind | Any of `authorization_code`, `refresh_token`, `client_credentials`, `token_exchange`. Service clients may not sign people in; other clients may not use the service grants. |
 | `access_ttl_seconds` | `300` | 120 to 900. |
 | `id_token_alg`, `access_token_alg` | `"RS256"` | `RS256` or `ES256`. An ES256 signing key is made at start once a client asks for ES256. |
@@ -213,7 +212,7 @@ One `[[client]]` per application. There is no dynamic registration.
 The `google` block of a realm is that realm's own OAuth client at Google:
 
 ```toml
-google = { client_id = "1234-abc.apps.googleusercontent.com", secret_env = "PID_GOOGLE_SECRET_ACME" }
+google = { client_id = "1234-abc.apps.googleusercontent.com", secret_env = "PID_GOOGLE_GW" }
 ```
 
 | Field | Default | Meaning |
@@ -236,7 +235,7 @@ docker run --rm -v "$PWD/pacod-id.toml:/etc/pacod-id/pacod-id.toml:ro" pacod-id:
 ```
 
 It prints `<file>: <n> realms, <m> clients`, or the first mistake with its place, for example
-`client acme-console: an audience (the product, e.g. acme) is required`, and exits
+`client pacod-gw-console: an audience (the product, e.g. pacod-gw) is required`, and exits
 non-zero. `check-config` needs no database, and no variable but those the file names with
 `${…}`. It does not check that the
 secrets the file names are set, that DNS or an Ingress points to the issuers, or that Google
@@ -271,7 +270,7 @@ environment only. Error messages name the variable and the file, never the value
 | `PID_KEK_ID` | no | `default` | The id of `PID_KEK`, stored with everything sealed under it (section 11). |
 | `PID_KEK_OLD` (file) | no | – | Earlier key-encryption keys during a rotation: `id=base64key,id=base64key`. |
 | `PID_TOKEN_PEPPER` (file) | yes | – | The HMAC key for client secrets, service tokens and known devices. At least 16 bytes. |
-| `PID_LEGACY_PEPPERS` (file) | no | – | Peppers of products whose tokens were imported: `acme:<acme's pepper>`. Only `acme` (tokens `acma_...`) is recognised. |
+| `PID_LEGACY_PEPPERS` (file) | no | – | Peppers of products whose tokens were imported: `gw:<the gateway's PGW_KEY_PEPPER>`. Only `gw` (tokens `pgwa_...`) is recognised. |
 | `PID_PUBLIC_LISTEN` | no | `0.0.0.0:8070` | Public listener. |
 | `PID_INTERNAL_LISTEN` | no | `0.0.0.0:8071` | Internal listener. |
 | `PID_METRICS_LISTEN` | no | `0.0.0.0:9170` | Metrics and probes. |
@@ -304,7 +303,7 @@ The development stack's mock Google reads `PID_MOCK_ISSUER`, `PID_MOCK_LISTEN` a
 |---|---|---|---|
 | `PID_KEK` | `openssl rand -base64 32` | The private signing keys, the parameters of queued mails (they hold one-time links), and for 30 seconds the successor of a rotated refresh token (the maintenance blanks it afterwards, section 1). All are sealed under it in the database. | **The service does not start** ("signing key ...: cannot decrypt (is PID_KEK right?)"). To change it, rotate it (section 11). If it is lost, see below. |
 | `PID_TOKEN_PEPPER` | `openssl rand -base64 32` | HMACs of client secrets, of service tokens (`pidt_...`) and of known-device cookies. | Secrets set with `pacod-id clients secret` and every service token stop working and must be issued again. Secrets from `secret_env` keep working: their HMAC is written again at every start. Every browser counts as new: the lockout exemption of known devices starts over, and people who signed in elsewhere before get a "new sign-in" mail at their next sign-in. Refresh tokens, sessions and links are stored as SHA-256 and are not affected. |
-| `PID_LEGACY_PEPPERS` | the product's own pepper | Imported admin tokens of the acme product (`acma_...`). | Those tokens stop working. |
+| `PID_LEGACY_PEPPERS` | the product's own pepper | Imported admin tokens of the gateway (`pgwa_...`). | Those tokens stop working. |
 | Database password | `openssl rand -hex 24` | The role `pacod_id`. Hex, because it goes into a URL. | Change it in PostgreSQL and in `PID_DATABASE_URL`, then restart. |
 | Client secrets (`secret_env`) | `openssl rand -hex 32` | A product's calls to pacod-id. | The product's calls fail until both sides have the same value (section 12). |
 | `PID_BOOTSTRAP_ADMIN_PASSWORD` | `openssl rand -base64 18` | Used once, to create the first administrator. | Nothing, once the account exists. |
@@ -490,7 +489,7 @@ not part of it.
 | `secrets.mount` | `true` | `true`: the Secret is mounted at `/var/run/secrets/pacod-id` and read through `PID_SECRETS_DIR`, so the secrets are not in the process environment. `false`: every key becomes a variable. |
 | `secrets.databaseUrl`, `kek`, `tokenPepper` | required without `existingSecret` | `PID_DATABASE_URL`, `PID_KEK`, `PID_TOKEN_PEPPER`. |
 | `secrets.kekOld`, `legacyPeppers`, `smtpPassword`, `bootstrapAdminPassword` | `""` | The matching `PID_*` variables. |
-| `secrets.extra` | `{}` | Client and Google secrets, by the variable names the configuration gives them, for example `ACME_CONSOLE_SECRET: ...`. |
+| `secrets.extra` | `{}` | Client and Google secrets, by the variable names the configuration gives them, for example `PGW_UI_CLIENT_SECRET: ...`. |
 | `kekId` | `default` | `PID_KEK_ID` (section 11). |
 | `email.smtpHost`, `smtpPort`, `smtpTls`, `smtpUsername`, `fromAddress`, `fromName` | `""`, `""`, `starttls`, ... | Mail. `fromAddress` is required with `smtpHost`. |
 | `bootstrapAdmin.email`, `realm`, `roles` | `""`, `""`, `id.admin` | Section 9. `realm` is needed only with more than one realm. |
@@ -534,18 +533,18 @@ image:
   tag: "0.1.0@sha256:<digest>"
 config: |
   [[realm]]
-  name = "acme"
+  name = "gateway"
   issuer = "https://id.example.com"
-  brand = "acme"
-  accounts_managed_by = ["acme.platform_admin"]
+  brand = "gateway"
+  accounts_managed_by = ["gw.platform_admin"]
 
   [[client]]
-  id = "acme-console"
-  realm = "acme"
+  id = "pacod-gw-console"
+  realm = "gateway"
   kind = "confidential"
-  secret_env = "ACME_CONSOLE_SECRET"
+  secret_env = "PGW_UI_CLIENT_SECRET"
   redirect_uris = ["https://console.example.com/auth/callback"]
-  audience = "acme"
+  audience = "pacod-gw"
 secrets:
   existingSecret: pacod-id-secrets
 kekId: "2026-10"
@@ -557,7 +556,7 @@ email:
   fromName: Sign-in
 bootstrapAdmin:
   email: admin@example.com
-  realm: acme
+  realm: gateway
 trustedProxies: 10.244.0.0/16           # the cluster's pod range, see section 8
 ingress:
   className: nginx
@@ -571,7 +570,7 @@ networkPolicy:
         matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
   internalFrom:
     - namespaceSelector:
-        matchLabels: { kubernetes.io/metadata.name: acme }
+        matchLabels: { kubernetes.io/metadata.name: pacod-gw }
 ```
 
 ### Pods
@@ -655,7 +654,7 @@ starting at once create the account once.
 
 - **Roles** are written `product.role`, comma-separated. `id.admin` may do everything in
   pacod-id and cannot lose its last holder; `id.auditor` reads accounts and the audit log. A
-  product's role, such as `acme.platform_admin`, must be one held at the platform. When the
+  product's role, such as `gw.platform_admin`, must be one held at the platform. When the
   product has not pushed its catalogue yet, the binding is kept and counts for nothing until
   the catalogue arrives; the log says "the bootstrap admin's role waits for its product's
   catalogue".
@@ -1052,7 +1051,7 @@ restore the backup of step 2.
 | Exits at start: "realm X: NAME (its Google client secret) is not set" | A `google.secret_env` variable is missing. | Set it, or remove the block. |
 | Exits at start: "PID_EMAIL_FROM_ADDRESS is needed with PID_SMTP_HOST" | SMTP host without sender. | Set the sender. |
 | Exits at start: "PID_SMTP_TLS is starttls, tls or none, not ..." or "PID_SMTP_USERNAME is set without PID_SMTP_PASSWORD" | A mistyped TLS mode, or an SMTP user name without its password. | Section 13. |
-| Exits at start naming `PID_CONFIG` and a realm or client, for example "client X: a service client that exchanges tokens names the audience of its product's tokens (e.g. acme)" or "realm X: password minimums must be 8 to 128 ..." | The configuration breaks a rule of section 3, perhaps one a newer version added. | Correct the file and check it with `check-config` (section 3). |
+| Exits at start naming `PID_CONFIG` and a realm or client, for example "client X: a service client that exchanges tokens names the audience of its product's tokens (e.g. pacod-gw)" or "realm X: password minimums must be 8 to 128 ..." | The configuration breaks a rule of section 3, perhaps one a newer version added. | Correct the file and check it with `check-config` (section 3). |
 | Exits at start: "loading the signing keys: signing key K: cannot decrypt (is PID_KEK right?)", or "... key-encryption key \"X\", which is not configured" | `PID_KEK` or `PID_KEK_ID` changed without the old key in `PID_KEK_OLD`. | Put the old key back (section 11). If it is lost: section 4. |
 | Exits at start: "migration N was previously applied but is missing ..." | An older image against a newer database. | Use the newer image, or restore (section 17). |
 | Exits at start: "migration N was previously applied but has been modified" | An applied migration file was edited, which section 5 rules out; the database still holds the old file's checksum. | Restore the migration as it was applied and put the change in a new migration. A development database you can lose: `dc down -v` and start again. |
@@ -1073,30 +1072,29 @@ restore the backup of step 2.
 | Products refuse new tokens after `keys rotate`, or still accept a revoked key | Their cached JWKS. The Rust and Python libraries take a new key within 30 seconds and drop a revoked one at their hourly read. | Section 10: restart them. |
 | `pacod-id keys rotate --revoke <kid>` fails with "no key <kid>: see `pacod-id keys list`; nothing changed" | The key id is mistyped, or the key is gone already. | Run `keys list` and repeat with the right id. |
 
-## 19. Taking over acme's people
+## 19. Taking over the gateway's people
 
-The acme product, when it runs on its own and signs people in itself, moves them to pacod-id
-once:
+A gateway that signed people in itself (`PGW_AUTH=local`) moves them to pacod-id once:
 
-1. On acme: `acme-core identity export --out acme-identity.json`. The file holds password
-   hashes and token hashes: keep it like a secret, and delete it afterwards.
-2. Here, with acme's pepper in `PID_LEGACY_PEPPERS` (`acme:<pepper>`, so that its `acma_`
-   admin tokens keep working): `pacod-id import acme acme-identity.json --dry-run`. The
+1. On the gateway: `pacod-gw-core identity export --out gw-identity.json`. The file holds
+   password hashes and token hashes: keep it like a secret, and delete it afterwards.
+2. Here, with the gateway's pepper in `PID_LEGACY_PEPPERS` (`gw:<PGW_KEY_PEPPER>`, so that its
+   `pgwa_` admin tokens keep working): `pacod-id import gw gw-identity.json --dry-run`. The
    report counts what would be created, changed and left as it is, lists what is skipped and
    why, and lists the conflicts. A conflict is most often an address pacod-id has already under
-   another account, such as the first administrator of section 9 created with the address of
-   acme's administrator: delete that account (or give it another address) and run the dry run
-   again. The acme product's accounts are never merged with others.
-3. `pacod-id import acme acme-identity.json`. Ids stay (`usr_…`, `tok_…` as service accounts,
+   another account, such as the first administrator of section 9 created with the gateway
+   admin's address: delete that account (or give it another address) and run the dry run again.
+   The gateway's accounts are never merged with others.
+3. `pacod-id import gw gw-identity.json`. Ids stay (`usr_…`, `tok_…` as service accounts,
    `rb_…`, `inv_…`); passwords, admin tokens and invitation links keep working. All or nothing.
-   Running instances take acme's catalogue, when the import brought it, within ten seconds, or
-   at once when acme pushes it at its start.
-4. Switch acme to signing in through pacod-id. Everyone signs in once more, now here.
+   Running instances take the gateway's catalogue, when the import brought it, within ten
+   seconds, or at once when the gateway pushes it at its start.
+4. Switch the gateway to `PGW_AUTH=oidc`. Everyone signs in once more, now here.
 
-Until `acme-core identity finalize`, acme can return to its own sign-in: its `identity
-rollback` asks `GET /internal/v1/imports/acme` and refuses once anything was written here since
+Until the gateway's `identity finalize`, it can return to its own sign-in: its `identity
+rollback` asks `GET /internal/v1/imports/gw` and refuses once anything was written here since
 the import, because that would be lost. A second import is refused for the same reason. After
-such a rollback, a new export and import make pacod-id match acme again: what acme removed
-meanwhile is removed or disabled here too. `import acme` does not migrate the database; run it
-against one the service has brought up to its version.
+such a rollback, a new export and import make pacod-id match the gateway again: what the
+gateway removed meanwhile is removed or disabled here too. `import gw` does not migrate the
+database; run it against one the service has brought up to its version.
 

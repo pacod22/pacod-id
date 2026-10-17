@@ -37,7 +37,7 @@ for (const scheme of ['light', 'dark'] as const) {
 				};
 				await authorize(page, realm);
 				await shot('login');
-				if (realm !== 'acme') {
+				if (realm !== 'gateway') {
 					await page.getByRole('link', { name: 'Create an account' }).click();
 					await page.waitForURL(/\/signup\?flow=/);
 					await shot('signup');
@@ -46,8 +46,8 @@ for (const scheme of ['light', 'dark'] as const) {
 				}
 				await signIn(
 					page,
-					realm === 'acme' ? 'root@e2e.test' : PERSON.email,
-					realm === 'acme' ? 'the e2e bootstrap passphrase' : PERSON.password
+					realm === 'gateway' ? 'root@e2e.test' : PERSON.email,
+					realm === 'gateway' ? 'the e2e bootstrap passphrase' : PERSON.password
 				);
 				await landsInApp(page);
 				for (const path of [
@@ -60,7 +60,7 @@ for (const scheme of ['light', 'dark'] as const) {
 					await expect(page.locator('main h1')).toBeVisible();
 					await shot(path.slice(1).replaceAll('/', '-'));
 				}
-				if (realm === 'acme') {
+				if (realm === 'gateway') {
 					for (const path of ['/admin', '/admin/service-accounts', '/admin/audit']) {
 						await page.goto(`${REALMS[realm]}${path}`);
 						await expect(page.locator('main h1')).toBeVisible();

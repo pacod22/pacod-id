@@ -1,5 +1,5 @@
 """A delegated grant: a long task acting for a person, for example a test run of the
-acme's tester started by an admin. It is bound to the admin's session: signing out ends it.
+gateway's tester started by an admin. It is bound to the admin's session: signing out ends it.
 """
 
 from __future__ import annotations

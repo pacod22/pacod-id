@@ -1,4 +1,4 @@
-//! Role bindings and a scope's members (acme's `/role-bindings` and
+//! Role bindings and a scope's members (the gateway's `/role-bindings` and
 //! members pages). Giving or taking a role needs the role's grant permission at the scope (the
 //! manifest's `grant`), or `id.bindings.manage`; no change leaves a protected role's scope
 //! without a holder unless the manifest's bypass lets the actor.
@@ -220,7 +220,7 @@ struct SetMember {
 }
 
 /// Gives a principal one role at exactly this scope, replacing the roles of the same product
-/// it held there (acme's members page); roles below the scope stay.
+/// it held there (the gateway's members page); roles below the scope stay.
 async fn set_member(
     State(st): State<Shared>,
     actor: Actor,

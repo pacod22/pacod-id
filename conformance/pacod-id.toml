@@ -4,7 +4,7 @@
 [[realm]]
 name = "oidf"
 issuer = "https://pid.oidf.test:27470"
-brand = "acme"
+brand = "gateway"
 
 [[client]]
 id = "oidf-1"

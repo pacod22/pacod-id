@@ -1,33 +1,33 @@
-//! `pacod-id import acme`: acme's people, admin tokens, roles and invitations, taken over
+//! `pacod-id import gw`: the gateway's people, admin tokens, roles and invitations, taken over
 //! with their ids and hashes, all or nothing; refused over conflicts and over writes since.
 
 mod common;
 
 use common::{Browser, PASSWORD, TestId};
-use pacod_id::import::{self, AcmeExport, ImportError};
+use pacod_id::import::{self, GwExport, ImportError};
 use serde_json::{Value, json};
 
-const CORE: &str = "a-secret-for-acme-core-0123456789";
-const ACME_PEPPER: &str = "acme-s-key-pepper-0123456789";
-const ADMIN_TOKEN: &str = "acma_0193_an-admin-token-from-acme";
-const INVITE: &str = "an-invitation-link-token-from-acme";
+const CORE: &str = "a-secret-for-the-gateway-core-0123456789";
+const GW_PEPPER: &str = "the-gateway-s-key-pepper-0123456789";
+const ADMIN_TOKEN: &str = "pgwa_0193_an-admin-token-from-the-gateway";
+const INVITE: &str = "an-invitation-link-token-from-the-gateway";
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn gw_manifest() -> Value {
-    let text = std::fs::read_to_string(format!("{}/tests/fixtures/acme.yaml", env!("CARGO_MANIFEST_DIR"))).unwrap();
+    let text = std::fs::read_to_string(format!("{}/tests/fixtures/gw.yaml", env!("CARGO_MANIFEST_DIR"))).unwrap();
     serde_json::to_value(pacod_id_authz::Manifest::from_yaml(&text).unwrap().source()).unwrap()
 }
 
-/// An export as `acme-core identity export` writes it.
+/// An export as `pacod-gw-core identity export` writes it.
 fn export() -> Value {
     let hash = pacod_id::crypto::password::hash(PASSWORD, Default::default()).unwrap();
-    let pepper = pacod_id::crypto::Pepper::new(ACME_PEPPER.as_bytes().to_vec()).unwrap();
+    let pepper = pacod_id::crypto::Pepper::new(GW_PEPPER.as_bytes().to_vec()).unwrap();
     let at = "2026-09-01T10:00:00Z";
     json!({
-        "format": "acme-identity/1",
+        "format": "pacod-gw-identity/1",
         "exported_at": "2026-10-13T08:00:00Z",
         "config_version": 42,
         "manifest": gw_manifest(),
@@ -60,7 +60,7 @@ fn export() -> Value {
     })
 }
 
-fn parsed(v: &Value) -> AcmeExport {
+fn parsed(v: &Value) -> GwExport {
     serde_json::from_value(v.clone()).unwrap()
 }
 
@@ -71,11 +71,11 @@ async fn start() -> TestId {
         |_| String::new(),
         |boot| {
             boot.legacy_peppers
-                .insert("acme".into(), pacod_id::crypto::Pepper::new(ACME_PEPPER.as_bytes().to_vec()).unwrap());
+                .insert("gw".into(), pacod_id::crypto::Pepper::new(GW_PEPPER.as_bytes().to_vec()).unwrap());
         },
     )
     .await;
-    id.service_secret("acme-core", CORE).await;
+    id.service_secret("gw-core", CORE).await;
     id
 }
 
@@ -84,17 +84,17 @@ async fn count(id: &TestId, sql: &str) -> i64 {
 }
 
 async fn since(id: &TestId) -> (u16, Value) {
-    id.internal_call(reqwest::Method::GET, "/internal/v1/imports/acme", "acme-core", CORE, None).await
+    id.internal_call(reqwest::Method::GET, "/internal/v1/imports/gw", "gw-core", CORE, None).await
 }
 
 #[tokio::test]
-async fn acme_s_people_come_over_with_their_ids_and_secrets() {
+async fn the_gateway_s_people_come_over_with_their_ids_and_secrets() {
     let id = start().await;
     let file = export();
     assert_eq!(since(&id).await.0, 404, "never imported");
 
     // A dry run reports and changes nothing.
-    let report = import::acme(id.store(), &id.running.state.config, "acme", &parsed(&file), true).await.unwrap();
+    let report = import::gw(id.store(), &id.running.state.config, "gateway", &parsed(&file), true).await.unwrap();
     assert_eq!((report.dry_run, report.applied, report.catalog), (true, false, "pushed"));
     assert_eq!((report.accounts.created, report.service_accounts.created, report.bindings.created), (3, 1, 3));
     assert_eq!(report.invitations.created, 1);
@@ -102,7 +102,7 @@ async fn acme_s_people_come_over_with_their_ids_and_secrets() {
     assert_eq!(count(&id, "SELECT count(*) FROM accounts").await, 0);
     assert_eq!(count(&id, "SELECT count(*) FROM imports").await, 0);
 
-    let report = import::acme(id.store(), &id.running.state.config, "acme", &parsed(&file), false).await.unwrap();
+    let report = import::gw(id.store(), &id.running.state.config, "gateway", &parsed(&file), false).await.unwrap();
     assert!(report.applied);
     assert_eq!(
         (report.organisations.created, report.workspaces.created, report.accounts.created, report.bindings.created),
@@ -131,24 +131,24 @@ async fn acme_s_people_come_over_with_their_ids_and_secrets() {
     assert_eq!(
         held,
         [
-            ("rb_1".into(), "usr_ada".into(), "acme.platform_admin".into()),
-            ("rb_2".into(), "usr_bob".into(), "acme.org_admin".into()),
-            ("rb_3".into(), "tok_0193".into(), "acme.viewer".into()),
+            ("rb_1".into(), "usr_ada".into(), "gw.platform_admin".into()),
+            ("rb_2".into(), "usr_bob".into(), "gw.org_admin".into()),
+            ("rb_3".into(), "tok_0193".into(), "gw.viewer".into()),
         ]
     );
 
-    // The running service takes the catalogue the import stored when acme pushes it.
+    // The running service takes the catalogue the import stored when the gateway pushes it.
     let (s, v) = id
         .internal_call(
             reqwest::Method::PUT,
-            "/internal/v1/catalog/acme",
-            "acme-core",
+            "/internal/v1/catalog/gw",
+            "gw-core",
             CORE,
             Some(json!({ "manifest": gw_manifest() })),
         )
         .await;
     assert_eq!((s, v["changed"].as_bool()), (200, Some(false)), "{v}");
-    assert!(id.running.state.catalog.get().manifest("acme").is_some());
+    assert!(id.running.state.catalog.get().manifest("gw").is_some());
 
     // The old password signs in; the old admin token is a service token; the old link works.
     let mut b = Browser::new(&id);
@@ -157,7 +157,7 @@ async fn acme_s_people_come_over_with_their_ids_and_secrets() {
     let r = id
         .http
         .post(format!("{}/internal/v1/introspect", id.internal))
-        .basic_auth("acme-core", Some(CORE))
+        .basic_auth("gw-core", Some(CORE))
         .form(&[("token", ADMIN_TOKEN)])
         .send()
         .await
@@ -169,7 +169,7 @@ async fn acme_s_people_come_over_with_their_ids_and_secrets() {
     assert_eq!((a.status, a.json["inviter_name"].as_str()), (200, Some("bob@example.com")), "{a:?}");
 
     // Again: nothing to do.
-    let report = import::acme(id.store(), &id.running.state.config, "acme", &parsed(&file), false).await.unwrap();
+    let report = import::gw(id.store(), &id.running.state.config, "gateway", &parsed(&file), false).await.unwrap();
     assert_eq!((report.accounts.unchanged, report.bindings.unchanged, report.invitations.unchanged), (3, 3, 1));
     assert_eq!(report.accounts.created + report.accounts.updated + report.service_accounts.updated, 0);
 
@@ -180,7 +180,7 @@ async fn acme_s_people_come_over_with_their_ids_and_secrets() {
     pacod_id::store::changes::record(
         &mut id.store().pool().acquire().await.unwrap(),
         "binding.removed",
-        Some("acme"),
+        Some("gw"),
         Some("tok_0193"),
         json!({ "id": "rb_3" }),
     )
@@ -188,7 +188,7 @@ async fn acme_s_people_come_over_with_their_ids_and_secrets() {
     .unwrap();
     let (_, v) = since(&id).await;
     assert_eq!(v["writes"].as_i64(), Some(1), "{v}");
-    match import::acme(id.store(), &id.running.state.config, "acme", &parsed(&file), false).await {
+    match import::gw(id.store(), &id.running.state.config, "gateway", &parsed(&file), false).await {
         Err(ImportError::WrittenSince { count: 1, .. }) => {}
         other => panic!("{other:?}"),
     }
@@ -199,7 +199,7 @@ async fn acme_s_people_come_over_with_their_ids_and_secrets() {
 async fn an_address_pacod_id_has_already_is_a_conflict_and_nothing_is_imported() {
     let id = start().await;
     common::account(&id, "bob@example.com").await;
-    match import::acme(id.store(), &id.running.state.config, "acme", &parsed(&export()), false).await {
+    match import::gw(id.store(), &id.running.state.config, "gateway", &parsed(&export()), false).await {
         Err(ImportError::Conflicts(report)) => {
             assert_eq!(report.conflicts.len(), 1, "{:?}", report.conflicts);
             assert!(report.conflicts[0].contains("usr_bob") && report.conflicts[0].contains("not merged"));
@@ -221,17 +221,17 @@ async fn an_id_pacod_id_has_for_something_else_is_a_conflict() {
             id: "usr_ada".into(),
             email: "someone@example.com".into(),
             password_hash: Some(hash),
-            signup_realm: "acme".into(),
+            signup_realm: "gateway".into(),
             ..Default::default()
         })
         .await
         .unwrap();
     let mut file = export();
     file["admin_tokens"][0]["doc"]["expires_at"] = json!("next tuesday");
-    match import::acme(id.store(), &id.running.state.config, "acme", &parsed(&file), true).await {
+    match import::gw(id.store(), &id.running.state.config, "gateway", &parsed(&file), true).await {
         Err(ImportError::Conflicts(report)) => {
             let all = report.conflicts.join(" | ");
-            assert!(all.contains("usr_ada: pacod-id has an account by this id that is not acme's"), "{all}");
+            assert!(all.contains("usr_ada: pacod-id has an account by this id that is not the gateway's"), "{all}");
             assert!(all.contains("tok_0193: its expires_at"), "{all}");
         }
         other => panic!("{other:?}"),
@@ -240,15 +240,15 @@ async fn an_id_pacod_id_has_for_something_else_is_a_conflict() {
 }
 
 #[tokio::test]
-async fn a_second_import_brings_what_acme_removed_meanwhile_to_an_end() {
+async fn a_second_import_brings_what_the_gateway_removed_meanwhile_to_an_end() {
     let id = start().await;
     let config = id.running.state.config.clone();
-    import::acme(id.store(), &config, "acme", &parsed(&export()), false).await.unwrap();
+    import::gw(id.store(), &config, "gateway", &parsed(&export()), false).await.unwrap();
     let mut b = Browser::new(&id);
     let (code, verifier) = id.sign_in(&mut b, "bob@example.com").await;
     assert_eq!(id.redeem(&code, &verifier).await.0, 200);
 
-    // Rolled back, acme removed its admin token, Ada and an invitation, and gave Bob a
+    // Rolled back, the gateway removed its admin token, Ada and an invitation, and gave Bob a
     // new password; then the people move again.
     let mut file = export();
     file["admin_tokens"] = json!([]);
@@ -258,7 +258,7 @@ async fn a_second_import_brings_what_acme_removed_meanwhile_to_an_end() {
     let other = pacod_id::crypto::password::hash("another long passphrase", Default::default()).unwrap();
     file["users"][0]["doc"]["password_hash"] = json!(other);
     file["users"][0]["doc"]["display_name"] = json!("Bob");
-    let report = import::acme(id.store(), &config, "acme", &parsed(&file), false).await.unwrap();
+    let report = import::gw(id.store(), &config, "gateway", &parsed(&file), false).await.unwrap();
     assert_eq!(
         (report.accounts.retired, report.service_accounts.retired, report.bindings.retired, report.invitations.retired),
         (1, 1, 2, 1),
@@ -282,11 +282,11 @@ async fn a_second_import_brings_what_acme_removed_meanwhile_to_an_end() {
 }
 
 #[tokio::test]
-async fn only_writes_about_acme_s_people_block_a_rollback() {
+async fn only_writes_about_the_gateway_s_people_block_a_rollback() {
     let id = start().await;
     let config = id.running.state.config.clone();
-    import::acme(id.store(), &config, "acme", &parsed(&export()), false).await.unwrap();
-    // Someone else's account changes (another realm, another person): not acme's business.
+    import::gw(id.store(), &config, "gateway", &parsed(&export()), false).await.unwrap();
+    // Someone else's account changes (another realm, another person): not the gateway's business.
     let carol = common::account(&id, "carol@example.com").await;
     let mut conn = id.store().pool().acquire().await.unwrap();
     pacod_id::store::changes::record(&mut conn, "account.updated", None, Some(&carol.id), json!({ "sub": carol.id }))

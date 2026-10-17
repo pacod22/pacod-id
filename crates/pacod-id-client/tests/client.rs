@@ -15,29 +15,29 @@ use pacod_id_client::{
 use serde_json::{Value, json};
 use tokio::sync::watch;
 
-const CORE: &str = "a-secret-for-acme-core-0123456789";
+const CORE: &str = "a-secret-for-the-gateway-core-0123456789";
 
 fn config(id: &TestId) -> IdConfig {
     IdConfig {
         issuers: vec![id.public.clone()],
         internal_url: id.internal.clone(),
-        client_id: "acme-core".into(),
+        client_id: "gw-core".into(),
         client_secret: CORE.into(),
-        product: "acme".into(),
-        audience: "acme".into(),
+        product: "gw".into(),
+        audience: "pacod-gw".into(),
     }
 }
 
 async fn start() -> (TestId, IdClient) {
     let id = TestId::start().await;
-    id.service_secret("acme-core", CORE).await;
+    id.service_secret("gw-core", CORE).await;
     let client = IdClient::new(config(&id));
     (id, client)
 }
 
 fn gw_manifest() -> pacod_id_authz::ManifestSource {
     let text =
-        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../pacod-id/tests/fixtures/acme.yaml")).unwrap();
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../pacod-id/tests/fixtures/gw.yaml")).unwrap();
     Manifest::from_yaml(&text).unwrap().source().clone()
 }
 
@@ -113,27 +113,27 @@ async fn the_copy_follows_the_feed_and_the_caller_is_checked_against_it() {
     let pushed = client.push_catalog(&gw_manifest(), &HashMap::new()).await.unwrap();
     assert!(pushed.changed);
     assert!(!client.push_catalog(&gw_manifest(), &HashMap::new()).await.unwrap().changed, "the same manifest again");
-    assert_eq!(client.last_import().await.unwrap(), None, "acme was never imported");
+    assert_eq!(client.last_import().await.unwrap(), None, "the gateway was never imported");
     client.put_organisation("org_1", "acme", "Acme", false).await.unwrap();
-    let err = client.put_scope("acme.workspace", "ws_1", "organisation:org_9", "Prod", false).await.unwrap_err();
+    let err = client.put_scope("gw.workspace", "ws_1", "organisation:org_9", "Prod", false).await.unwrap_err();
     assert_eq!(err.code(), Some("scope_unknown"), "the outbox waits for the organisation");
-    let seq = client.put_scope("acme.workspace", "ws_1", "organisation:org_1", "Prod", false).await.unwrap();
+    let seq = client.put_scope("gw.workspace", "ws_1", "organisation:org_1", "Prod", false).await.unwrap();
 
     let (_stop_tx, stop) = watch::channel(false);
     let cache = AuthzCache::spawn(client.clone(), stop);
     assert!(cache.wait_for(seq, Duration::from_secs(5)).await);
     assert!(cache.is_ready() && cache.feed_age().is_some());
-    assert_eq!(cache.snapshot().scope_names.get("acme.workspace:ws_1").map(String::as_str), Some("Prod"));
+    assert_eq!(cache.snapshot().scope_names.get("gw.workspace:ws_1").map(String::as_str), Some("Prod"));
     let mut events = cache.subscribe();
 
     let ada = common::account(&id, "ada@example.com").await;
-    let seq = bind(&id, &ada.id, "acme.workspace_admin", ScopeRef::of("acme.workspace", "ws_1")).await;
+    let seq = bind(&id, &ada.id, "gw.workspace_admin", ScopeRef::of("gw.workspace", "ws_1")).await;
     assert!(cache.wait_for(seq, Duration::from_secs(2)).await, "within the feed's promise");
     let held = cache.bindings_of(&ada.id);
     assert_eq!(held.len(), 1);
     assert_eq!(
         held[0].path.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        ["platform", "organisation:org_1", "acme.workspace:ws_1"]
+        ["platform", "organisation:org_1", "gw.workspace:ws_1"]
     );
     let e = events.recv().await.unwrap();
     assert_eq!((e.kind.as_str(), e.data["principal"].as_str()), ("binding.added", Some(ada.id.as_str())));
@@ -199,7 +199,7 @@ async fn service_tokens_and_facades() {
     client.push_catalog(&gw_manifest(), &HashMap::new()).await.unwrap();
     let root = common::account(&id, "root@example.com").await;
     bind(&id, &root.id, "id.admin", ScopeRef::platform()).await;
-    bind(&id, &root.id, "acme.platform_admin", ScopeRef::platform()).await;
+    bind(&id, &root.id, "gw.platform_admin", ScopeRef::platform()).await;
     let (_stop_tx, stop) = watch::channel(false);
     let cache = AuthzCache::spawn(client.clone(), stop);
     let auth = Authenticator::new(client.clone(), cache.clone());
@@ -225,7 +225,7 @@ async fn service_tokens_and_facades() {
         .unwrap();
     let token: Value = IdClient::read(r).await.unwrap();
     let secret = token["token"].as_str().unwrap().to_owned();
-    let seq = bind(&id, &svc_id, "acme.viewer", ScopeRef::platform()).await;
+    let seq = bind(&id, &svc_id, "gw.viewer", ScopeRef::platform()).await;
     assert!(cache.wait_for(seq, Duration::from_secs(2)).await);
 
     let caller = auth.authenticate(&secret).await.unwrap();
@@ -273,10 +273,10 @@ async fn starting_does_not_wait_for_pacod_id() {
     let client = IdClient::new(IdConfig {
         issuers: vec!["http://127.0.0.1:9".into()],
         internal_url: "http://127.0.0.1:9".into(),
-        client_id: "acme-core".into(),
+        client_id: "gw-core".into(),
         client_secret: CORE.into(),
-        product: "acme".into(),
-        audience: "acme".into(),
+        product: "gw".into(),
+        audience: "pacod-gw".into(),
     });
     let (stop_tx, stop) = watch::channel(false);
     let cache = AuthzCache::spawn(client.clone(), stop);
@@ -309,7 +309,7 @@ async fn a_cursor_pacod_id_no_longer_keeps_loads_the_snapshot_again() {
     pacod_id::store::authz::lock_head(&mut tx).await.unwrap();
     let add = [NewBinding {
         principal: ada.id.clone(),
-        role: "acme.viewer".into(),
+        role: "gw.viewer".into(),
         scope: ScopeRef::platform(),
         source: "manual",
         created_by: "test".into(),

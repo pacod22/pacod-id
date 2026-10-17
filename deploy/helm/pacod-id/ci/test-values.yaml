@@ -5,28 +5,28 @@ image:
 
 config: |
   [[realm]]
-  name = "acme"
+  name = "gateway"
   issuer = "https://id.example.com"
-  brand = "acme"
+  brand = "gateway"
 
   [[client]]
-  id = "acme-console"
-  realm = "acme"
+  id = "pacod-gw-console"
+  realm = "gateway"
   kind = "confidential"
-  secret_env = "ACME_CONSOLE_SECRET"
+  secret_env = "PGW_UI_CLIENT_SECRET"
   redirect_uris = ["https://console.example.com/auth/callback"]
-  audience = "acme"
+  audience = "pacod-gw"
 
 secrets:
   databaseUrl: postgres://pacod_id:not-a-real-password@postgres.example.internal:5432/pacod_id?sslmode=require
   kek: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
   kekOld: 2026-01=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
   tokenPepper: not-a-real-pepper-0123456789
-  legacyPeppers: acme:not-a-real-pepper-0123456789
+  legacyPeppers: gw:not-a-real-pepper-0123456789
   smtpPassword: not-a-real-password
   bootstrapAdminPassword: not-a-real-password
   extra:
-    ACME_CONSOLE_SECRET: not-a-real-client-secret-0123456789abcdef
+    PGW_UI_CLIENT_SECRET: not-a-real-client-secret-0123456789abcdef
 
 kekId: "2026-10"
 
@@ -39,8 +39,8 @@ email:
 
 bootstrapAdmin:
   email: admin@example.com
-  realm: acme
-  roles: id.admin,acme.platform_admin
+  realm: gateway
+  roles: id.admin,gw.platform_admin
 
 trustedProxies: 10.0.0.0/8
 
@@ -60,7 +60,7 @@ networkPolicy:
   internalFrom:
     - namespaceSelector:
         matchLabels:
-          kubernetes.io/metadata.name: acme
+          kubernetes.io/metadata.name: pacod-gw
   metricsFrom:
     - namespaceSelector:
         matchLabels:

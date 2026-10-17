@@ -3,7 +3,7 @@
 This is the reference of every HTTP endpoint pacod-id serves, as the code in
 `crates/pacod-id/src` implements it. It is written for engineers of the products that sign
 people in with pacod-id (their web apps, backends and native apps) and for operators. It
-assumes OAuth 2.0 and OpenID Connect. The examples use a fictional product `acme`, whose
+assumes OAuth 2.0 and OpenID Connect. The examples use the gateway, pacod-gw (product `gw`), whose
 workspaces sit inside organisations.
 
 ## Contents
@@ -84,8 +84,8 @@ product's facade can pass an error on unchanged:
 {
   "error": {
     "type": "conflict",
-    "message": "the change leaves organisation:org_1 without a acme.org_admin",
-    "details": { "code": "last_holder", "role": "acme.org_admin", "scope": "organisation:org_1" }
+    "message": "the change leaves organisation:org_1 without a gw.org_admin",
+    "details": { "code": "last_holder", "role": "gw.org_admin", "scope": "organisation:org_1" }
   }
 }
 ```
@@ -427,8 +427,8 @@ For service clients. No parameters. The answer is `access_token`, `token_type` a
 | `audience` | default `pacod-id`; for an access token it must be `pacod-id`; ignored for a refresh token |
 | `actor_token` | refused (`invalid_request`): the authenticated client is the actor |
 
-The subject token is either a service token (`pidt_…`, or an imported `acma_…` when
-`PID_LEGACY_PEPPERS` has the `acme` pepper) that is active, unexpired and whose service account
+The subject token is either a service token (`pidt_…`, or an imported `pgwa_…` when
+`PID_LEGACY_PEPPERS` has the `gw` pepper) that is active, unexpired and whose service account
 is active; or a user access token pacod-id issued: signature, `typ` `at+jwt`, the issuer of any
 configured realm, unexpired, `pid_kind` `user`, its session live and its account active, and
 its `aud` the service client's `audience` (or a list containing it): only tokens issued for the
@@ -508,7 +508,7 @@ emits no feed event and sends no back-channel logout; to end a session use logou
 
 | Token | Answer |
 | --- | --- |
-| a service token: `pidt_…`, or `acma_…` checked with the `acme` pepper of `PID_LEGACY_PEPPERS` | `{"active": true, "sub": <service account>, "pid_kind": "service", "token_id", "name", "organisation_id", "exp"}`; `exp` is null for a token without expiry |
+| a service token: `pidt_…`, or `pgwa_…` checked with the `gw` pepper of `PID_LEGACY_PEPPERS` | `{"active": true, "sub": <service account>, "pid_kind": "service", "token_id", "name", "organisation_id", "exp"}`; `exp` is null for a token without expiry |
 | a user access token pacod-id signed, unexpired, session live, account active | `{"active": true, "sub", "pid_kind": "user", "client_id", "aud", "scope", "sid", "iss", "iat", "exp", "token_type": "Bearer"}` |
 | a service JWT pacod-id signed (`pid_kind` `service`), unexpired, whose `sub` is an active service account (an exchanged service token, section 3.4) or a configured client (a client-credentials token) | the same fields as the line above |
 | anything else | `{"active": false}`, without a reason |
@@ -623,8 +623,8 @@ until its copy of the feed has reached that `seq`.
 body:
 
 ```json
-{ "manifest": { "product": "acme", "scope_types": {}, "roles": {}, "grant": { "default": "members.manage" } },
-  "migrate": { "acme.old_role": "acme.viewer", "acme.gone_role": null } }
+{ "manifest": { "product": "gw", "scope_types": {}, "roles": {}, "grant": { "default": "members.manage" } },
+  "migrate": { "gw.old_role": "gw.viewer", "gw.gone_role": null } }
 ```
 
 `manifest` is the product's `authz/<product>.yaml` as JSON, in the format that
@@ -676,7 +676,7 @@ organisation itself (`binding.removed`). Then `scope.upserted` is emitted with t
 one is a no-op.
 
 `PUT /internal/v1/scopes/{kind}/{id}`, body `{"parent", "display_name"?, "system"?}`: `kind` is
-one of the product's scope types (`acme.workspace`; another product's is 403 `wrong_product`, and
+one of the product's scope types (`gw.workspace`; another product's is 403 `wrong_product`, and
 409 `catalog_missing` before the product's first push). `parent` is written `platform`,
 `organisation:<id>` or `<product>.<type>:<id>`, of the type the manifest names (422
 `bad_parent`), and must be registered (409 `scope_unknown`). A scope's parent never changes (409
@@ -706,7 +706,7 @@ transaction, everything the product needs as of `seq` (`authz/feed.rs`):
 | `revoked_sids` | `{sid, sub}` of sessions revoked in the last 15 minutes |
 
 A `path` is the scope's chain from the platform: `["platform", "organisation:org_1",
-"acme.workspace:ws_1"]`. A binding whose scope is no longer registered is left out.
+"gw.workspace:ws_1"]`. A binding whose scope is no longer registered is left out.
 
 ### 4.6 Changes
 
@@ -721,8 +721,8 @@ that connection is down. At most 1000 changes are read per answer.
   "seq": 1843,
   "events": [
     { "seq": 1843, "at": "2026-10-12T09:14:03.512Z", "kind": "binding.removed",
-      "id": "rb_0192…", "principal": "usr_0191…", "principal_kind": "user", "role": "acme.viewer",
-      "path": ["platform", "organisation:org_1", "acme.workspace:ws_1"], "source": "manual" }
+      "id": "rb_0192…", "principal": "usr_0191…", "principal_kind": "user", "role": "gw.viewer",
+      "path": ["platform", "organisation:org_1", "gw.workspace:ws_1"], "source": "manual" }
   ]
 }
 ```
@@ -770,9 +770,8 @@ The follower then loads the snapshot again, replaces its copy with it, and conti
 
 ### 4.7 Imports
 
-`pacod-id import acme <file> [--dry-run] [--realm acme]` takes over the people the acme
-product kept in its own sign-in, from the export `acme-core identity export` writes
-(docs/runbook.md section 19). It does not migrate the
+`pacod-id import gw <file> [--dry-run] [--realm gateway]` takes over the gateway's own people
+from `pacod-gw-core identity export` (docs/runbook.md section 19). It does not migrate the
 database: run it against a database the service has brought up to its version. `GET
 /internal/v1/imports/{product}` (the caller's product only) answers how the last import stands:
 
@@ -834,13 +833,13 @@ The checks the handlers use:
 | --- | --- |
 | reads accounts | has `id.accounts.read` at the platform, or the realm policy |
 | manages an account | has `id.accounts.manage` at the platform; or has the realm policy, the account signed up in the actor's realm, and the actor could grant every role the account holds (else 403 `holds_more_rights`; the actor's own account is exempt) |
-| administers a path | has `id.bindings.manage` at the platform, or the acting product's grant default permission (for acme, `acme.members.manage`) at the path |
+| administers a path | has `id.bindings.manage` at the platform, or the acting product's grant default permission (the gateway's `gw.members.manage`) at the path |
 | manages service accounts at a path | has `id.service_accounts.manage` there, or administers it |
 | may grant a role at a path | passes the role's grant rule in its manifest at the path, or has `id.bindings.manage` at the platform |
 | sees a scope's members | has `id.accounts.read` at the platform (the realm policy does not count here), administers the path, or holds a manifest role (not a custom role) of a product concerned at the scope or above it |
 
 **The realm policy** (`accounts_managed_by`): a realm may name roles, for example
-`acme.platform_admin`. An actor holding one of them at the
+`gw.platform_admin`. An actor holding one of them at the
 platform manages the accounts that signed up in the actor's realm as if it held
 `id.accounts.read` and `id.accounts.manage`, and sees only those. Apart from its own account,
 it may change, mail or delete only an account all of whose bindings it could have given, by

@@ -9,13 +9,13 @@ use std::time::Duration;
 use common::{Browser, CLIENT_SECRET, TestId, account, authorize_url, param, pkce};
 use serde_json::{Value, json};
 
-const CORE_SECRET: &str = "a-secret-for-acme-core-0123456789";
+const CORE_SECRET: &str = "a-secret-for-the-gateway-core-0123456789";
 const BFF_SECRET: &str = "a-secret-for-the-second-bff-0123456789";
 const BFF_REDIRECT: &str = "http://127.0.0.1:13001/auth/callback";
 
 async fn core_may_call(id: &TestId) {
     id.store()
-        .client_set_secret("acme-core", "acme", &id.running.state.boot.token_pepper.hash(CORE_SECRET))
+        .client_set_secret("gw-core", "gateway", &id.running.state.boot.token_pepper.hash(CORE_SECRET))
         .await
         .unwrap();
 }
@@ -34,7 +34,7 @@ async fn internal(id: &TestId, path: &str, client: &str, secret: &str, form: &[(
 }
 
 async fn introspect(id: &TestId, token: &str) -> Value {
-    let (status, v) = internal(id, "/internal/v1/introspect", "acme-core", CORE_SECRET, &[("token", token)]).await;
+    let (status, v) = internal(id, "/internal/v1/introspect", "gw-core", CORE_SECRET, &[("token", token)]).await;
     assert_eq!(status, 200, "{v}");
     v
 }
@@ -56,14 +56,13 @@ async fn live(id: &TestId, sid: &str) -> bool {
 
 #[tokio::test]
 async fn userinfo_revocation_and_introspection() {
-    let pepper = "an-acme-pepper-for-the-tests-0123456789";
+    let pepper = "a-gateway-pepper-for-the-tests-0123456789";
     let db = common::fresh_database().await;
     let id = TestId::start_with(
         &db,
         |_| String::new(),
         |boot| {
-            boot.legacy_peppers
-                .insert("acme".into(), pacod_id::crypto::Pepper::new(pepper.as_bytes().to_vec()).unwrap());
+            boot.legacy_peppers.insert("gw".into(), pacod_id::crypto::Pepper::new(pepper.as_bytes().to_vec()).unwrap());
         },
     )
     .await;
@@ -94,11 +93,11 @@ async fn userinfo_revocation_and_introspection() {
     let (_, v) = internal(&id, "/internal/v1/introspect", "console", CLIENT_SECRET, &[("token", access)]).await;
     assert_eq!(v["error"], "unauthorized_client", "{v}");
     let (status, _) =
-        internal(&id, "/internal/v1/introspect", "acme-core", "a-wrong-secret-0123456789012345", &[("token", access)])
+        internal(&id, "/internal/v1/introspect", "gw-core", "a-wrong-secret-0123456789012345", &[("token", access)])
             .await;
     assert_eq!(status, 401);
     // A client-credentials token works as well as the secret.
-    let (_, cc) = internal(&id, "/oidc/token", "acme-core", CORE_SECRET, &[("grant_type", "client_credentials")]).await;
+    let (_, cc) = internal(&id, "/oidc/token", "gw-core", CORE_SECRET, &[("grant_type", "client_credentials")]).await;
     let r = id
         .http
         .post(format!("{}/internal/v1/introspect", id.internal))
@@ -113,7 +112,7 @@ async fn userinfo_revocation_and_introspection() {
         id.http.post(format!("{}/internal/v1/introspect", id.public)).form(&[("token", access)]).send().await.unwrap();
     assert_eq!(r.status(), 404);
 
-    // Service tokens: pacod-id's own, and one imported from acme with its pepper.
+    // Service tokens: pacod-id's own, and one imported from the gateway with its pepper.
     id.store().service_account_create("sva_1", "ci", None, "test").await.unwrap();
     let own = pacod_id::crypto::tokens::token("pidt", "stk_1");
     let boot = &id.running.state.boot;
@@ -121,10 +120,10 @@ async fn userinfo_revocation_and_introspection() {
         .service_token_create("stk_1", "sva_1", &boot.token_pepper.hash(&own), None, "pidt_1…", None)
         .await
         .unwrap();
-    let imported = "acma_9f8e7d_an-old-acme-admin-token-secret";
+    let imported = "pgwa_9f8e7d_an-old-gateway-admin-token-secret";
     let gw_pepper = pacod_id::crypto::Pepper::new(pepper.as_bytes().to_vec()).unwrap();
     id.store()
-        .service_token_create("stk_2", "sva_1", &gw_pepper.hash(imported), Some("acme"), "acma_9f…", None)
+        .service_token_create("stk_2", "sva_1", &gw_pepper.hash(imported), Some("gw"), "pgwa_9f…", None)
         .await
         .unwrap();
     for t in [own.as_str(), imported] {
@@ -135,13 +134,13 @@ async fn userinfo_revocation_and_introspection() {
             "{t}"
         );
     }
-    for t in ["acma_9f8e7d_a-guess", "pidt_1_a-guess", "nonsense", tokens["id_token"].as_str().unwrap()] {
+    for t in ["pgwa_9f8e7d_a-guess", "pidt_1_a-guess", "nonsense", tokens["id_token"].as_str().unwrap()] {
         assert_eq!(introspect(&id, t).await, json!({ "active": false }), "{t}");
     }
 
     // Revocation: another client's token stays, the owner's goes. Always 200.
     let refresh = tokens["refresh_token"].as_str().unwrap();
-    let (status, _) = internal(&id, "/oidc/revoke", "acme-core", CORE_SECRET, &[("token", refresh)]).await;
+    let (status, _) = internal(&id, "/oidc/revoke", "gw-core", CORE_SECRET, &[("token", refresh)]).await;
     assert_eq!(status, 200);
     let (status, rotated) = id.token(&[("grant_type", "refresh_token"), ("refresh_token", refresh)]).await;
     assert_eq!(status, 200, "{rotated}");
@@ -172,7 +171,7 @@ async fn userinfo_revocation_and_introspection() {
     let r = id
         .http
         .post(format!("{}/internal/v1/sessions/{sid}/revoke", id.internal))
-        .basic_auth("acme-core", Some(CORE_SECRET))
+        .basic_auth("gw-core", Some(CORE_SECRET))
         .send()
         .await
         .unwrap();
@@ -319,12 +318,12 @@ async fn back_channel_logout_and_internal_revocation() {
                 r#"
 [[client]]
 id = "bff"
-realm = "acme"
+realm = "gateway"
 kind = "confidential"
 secret_env = "BFF_SECRET"
 redirect_uris = ["{BFF_REDIRECT}"]
 backchannel_logout_uri = "{rp_url}"
-audience = "acme"
+audience = "pacod-gw"
 "#
             )
         },
@@ -420,7 +419,7 @@ audience = "acme"
     assert_eq!(claims["exp"].as_i64().unwrap() - claims["iat"].as_i64().unwrap(), 120);
 
     // A product's service may end any session; no client is told of one it had no grant in.
-    assert_eq!(revoke(other_sid.clone(), "acme-core", CORE_SECRET).await, 204);
+    assert_eq!(revoke(other_sid.clone(), "gw-core", CORE_SECRET).await, 204);
     assert!(!live(&id, &other_sid).await);
     assert_eq!(attempts().await.len(), 1);
     id.running.stop().await;
@@ -461,7 +460,7 @@ async fn open_webui_gets_roles_and_only_proven_addresses() {
                 r#"
 [[client]]
 id = "webui"
-realm = "acme"
+realm = "gateway"
 kind = "confidential"
 secret_env = "WEBUI_SECRET"
 redirect_uris = ["{WEBUI_REDIRECT}"]

@@ -34,7 +34,7 @@ pub struct Bootstrap {
     /// The current key-encryption key first, then older ones still needed to read records.
     pub keks: Vec<Kek>,
     pub token_pepper: Pepper,
-    /// Peppers of products whose tokens were imported, by product (`acme` for acma_ tokens).
+    /// Peppers of products whose tokens were imported, by product (`gw` for pgwa_ tokens).
     pub legacy_peppers: BTreeMap<String, Pepper>,
     pub trusted_proxies: TrustedProxies,
     pub password_cost: Cost,
@@ -145,7 +145,7 @@ impl Bootstrap {
                 let (product, pepper) = pair
                     .trim()
                     .split_once(':')
-                    .context("PID_LEGACY_PEPPERS entries look like acme:<the product's pepper>")?;
+                    .context("PID_LEGACY_PEPPERS entries look like gw:<the product's pepper>")?;
                 legacy_peppers.insert(
                     product.to_owned(),
                     Pepper::new(pepper.as_bytes().to_vec())
@@ -290,17 +290,17 @@ mod tests {
         Config::from_toml(
             r#"
 [[realm]]
-name = "acme"
+name = "gateway"
 issuer = "http://127.0.0.1:13070"
-brand = "acme"
+brand = "gateway"
 
 [[client]]
 id = "console"
-realm = "acme"
+realm = "gateway"
 kind = "confidential"
 secret_env = "CONSOLE_SECRET"
 redirect_uris = ["http://127.0.0.1:13000/auth/callback"]
-audience = "acme"
+audience = "pacod-gw"
 "#,
         )
         .unwrap()
@@ -353,10 +353,10 @@ audience = "acme"
     fn old_keys_and_legacy_peppers() {
         let mut vars = BASE.to_vec();
         vars.push(("PID_KEK_OLD", "2025=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="));
-        vars.push(("PID_LEGACY_PEPPERS", "acme:acme-pepper-value"));
+        vars.push(("PID_LEGACY_PEPPERS", "gw:the-gateway-pepper-value"));
         let b = resolve(&vars).unwrap();
         assert_eq!(b.keks.iter().map(|k| k.id.as_str()).collect::<Vec<_>>(), ["default", "2025"]);
-        assert!(b.legacy_peppers.contains_key("acme"));
+        assert!(b.legacy_peppers.contains_key("gw"));
     }
 
     #[test]

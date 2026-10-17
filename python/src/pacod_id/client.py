@@ -28,7 +28,7 @@ class IdConfig:
     internal_url: str
     client_id: str
     client_secret: str
-    #: The product (``acme``) and the audience of its access tokens (``acme``).
+    #: The product (``gw``) and the audience of its access tokens (``pacod-gw``).
     product: str
     audience: str
 

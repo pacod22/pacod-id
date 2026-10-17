@@ -1,4 +1,4 @@
-//! People's accounts (acme's `/users`). Needs `id.accounts.read` or
+//! People's accounts (the gateway's `/users`). Needs `id.accounts.read` or
 //! `id.accounts.manage`; in a realm with `accounts_managed_by`, its holders of those roles manage
 //! the accounts that signed up in that realm, and only those.
 
@@ -152,7 +152,7 @@ async fn create(State(st): State<Shared>, actor: Actor, Json(body): Json<NewAcco
         }
         None => None,
     };
-    // As in the acme: proven by the admin unless the realm confirms addresses by mail.
+    // As in the gateway: proven by the admin unless the realm confirms addresses by mail.
     let verified = st.mail.is_none() || !realm.require_verified_email;
     let locale = body.locale.filter(|l| realm.locales.contains(l)).unwrap_or_else(|| realm.default_locale.clone());
     let account = match st

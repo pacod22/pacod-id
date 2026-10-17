@@ -10,7 +10,7 @@
 		size?: number;
 	}
 
-	let { brand = 'acme', monogram, size = 44 }: Props = $props();
+	let { brand = 'gateway', monogram, size = 44 }: Props = $props();
 	const text = $derived(monogram ?? BRANDS[brand].monogram);
 </script>
 

@@ -443,16 +443,16 @@ mod tests {
     fn bulgarian_comes_first_then_english() {
         let m = render(
             Template::VerifyEmail,
-            &realm("acme", &["bg", "en"]),
+            &realm("gateway", &["bg", "en"]),
             &params("https://id.example/verify-email?token=abc"),
         );
-        assert_eq!(m.subject, "Потвърдете имейл адреса си · Confirm your email address — Acme Console");
+        assert_eq!(m.subject, "Потвърдете имейл адреса си · Confirm your email address — pacod-gw");
         let bg = m.text.find("Потвърдете, че ada@example.com").unwrap();
         let en = m.text.find("Confirm that ada@example.com").unwrap();
         assert!(bg < en);
         assert!(m.text.contains("Confirm email address: https://id.example/verify-email?token=abc"));
         assert!(m.html.contains(r#"lang="bg""#) && m.html.contains(r#"lang="en""#));
-        assert!(m.html.contains("#0e6e57"), "acme's teal");
+        assert!(m.html.contains("#0e6e57"), "the gateway's teal");
     }
 
     #[test]

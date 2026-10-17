@@ -32,7 +32,7 @@ async fn a_person_signs_in_and_gets_tokens() {
     let (status, info) = id.get_json(&format!("{}/ui-api/v1/flows/{flow}", id.public)).await;
     assert_eq!(status, 410, "without the flow cookie, nobody may read the flow: {info}");
     let info = b.get(&format!("{}/ui-api/v1/flows/{flow}", id.public)).await;
-    assert_eq!((info.json["stage"].as_str(), info.json["brand"].as_str()), (Some("start"), Some("acme")));
+    assert_eq!((info.json["stage"].as_str(), info.json["brand"].as_str()), (Some("start"), Some("gateway")));
 
     let a = b
         .post(
@@ -58,7 +58,7 @@ async fn a_person_signs_in_and_gets_tokens() {
     assert_eq!(typ, "at+jwt", "RFC 9068");
     assert_eq!(
         (at["aud"].as_str(), at["client_id"].as_str(), at["pid_kind"].as_str()),
-        (Some("acme"), Some("console"), Some("user"))
+        (Some("pacod-gw"), Some("console"), Some("user"))
     );
     assert_eq!(at["sub"], ada.id);
     assert_eq!(at["email"], "ada@example.com");
@@ -115,7 +115,7 @@ async fn authorize_never_redirects_to_an_unregistered_address() {
         (vec![("client_id", "unknown")], "unknown client"),
         (vec![("redirect_uri", "https://evil.example/cb")], "unregistered redirect"),
         (vec![("redirect_uri", "http://127.0.0.1:13000/auth/callback/x")], "a longer redirect"),
-        (vec![("client_id", "acme-core")], "a service client"),
+        (vec![("client_id", "gw-core")], "a service client"),
     ] {
         let a = b.get(&authorize_url(&id, &challenge, &extra)).await;
         assert_eq!((a.status, a.location.is_none()), (400, true), "{why}: {a:?}");
@@ -370,7 +370,7 @@ async fn a_role_holder_with_a_short_password_chooses_a_longer_one() {
     let id = TestId::start().await;
     let carol = account_with(&id, "carol@example.com", "tenletters", true).await;
     id.sql(&format!(
-        "INSERT INTO role_bindings (id, principal_id, principal_kind, role, scope_type) VALUES ('rb_1', '{}', 'user', 'acme.platform_admin', 'platform')",
+        "INSERT INTO role_bindings (id, principal_id, principal_kind, role, scope_type) VALUES ('rb_1', '{}', 'user', 'gw.platform_admin', 'platform')",
         carol.id
     ))
     .await;
@@ -449,16 +449,16 @@ async fn the_ui_api_takes_writes_from_its_own_pages_only() {
 #[tokio::test]
 async fn services_get_client_credentials_and_exchange_tokens() {
     let id = TestId::start().await;
-    let core_secret = "a-secret-for-acme-core-0123456789";
+    let core_secret = "a-secret-for-the-gateway-core-0123456789";
     id.store()
-        .client_set_secret("acme-core", "acme", &id.running.state.boot.token_pepper.hash(core_secret))
+        .client_set_secret("gw-core", "gateway", &id.running.state.boot.token_pepper.hash(core_secret))
         .await
         .unwrap();
     let as_core = |form: Vec<(&'static str, String)>| {
         let http = id.http.clone();
         let url = format!("{}/oidc/token", id.internal);
         async move {
-            let r = http.post(url).basic_auth("acme-core", Some(core_secret)).form(&form).send().await.unwrap();
+            let r = http.post(url).basic_auth("gw-core", Some(core_secret)).form(&form).send().await.unwrap();
             (r.status().as_u16(), r.json::<serde_json::Value>().await.unwrap())
         }
     };
@@ -467,7 +467,7 @@ async fn services_get_client_credentials_and_exchange_tokens() {
     let (_, claims) = id.verify(cc["access_token"].as_str().unwrap()).await;
     assert_eq!(
         (claims["aud"].as_str(), claims["pid_kind"].as_str(), claims["sub"].as_str()),
-        (Some("pacod-id"), Some("service"), Some("acme-core"))
+        (Some("pacod-id"), Some("service"), Some("gw-core"))
     );
 
     // A person's token, swapped for a short one for pacod-id's API.
@@ -491,7 +491,7 @@ async fn services_get_client_credentials_and_exchange_tokens() {
     assert_eq!(status, 200, "{ex}");
     let (_, claims) = id.verify(ex["access_token"].as_str().unwrap()).await;
     assert_eq!((claims["aud"].as_str(), claims["sub"].as_str()), (Some("pacod-id"), Some(ada.id.as_str())));
-    assert_eq!(claims["act"]["sub"], "acme-core");
+    assert_eq!(claims["act"]["sub"], "gw-core");
     assert!(claims["exp"].as_i64().unwrap() - claims["iat"].as_i64().unwrap() <= 60);
 
     // An id_token is no access token, though the same key signed it.
@@ -503,7 +503,7 @@ async fn services_get_client_credentials_and_exchange_tokens() {
     assert_eq!(status, 200, "{d}");
     let delegated = d["refresh_token"].as_str().unwrap().to_owned();
     let (_, claims) = id.verify(d["access_token"].as_str().unwrap()).await;
-    assert_eq!((claims["aud"].as_str(), claims["act"]["sub"].as_str()), (Some("acme"), Some("acme-core")));
+    assert_eq!((claims["aud"].as_str(), claims["act"]["sub"].as_str()), (Some("pacod-gw"), Some("gw-core")));
     let (status, refreshed) = as_core(vec![("grant_type", "refresh_token".into()), ("refresh_token", delegated)]).await;
     assert_eq!(status, 200, "{refreshed}");
     pacod_id::oidc::sign_out_everywhere(id.store(), &ada.id, "test").await.unwrap();

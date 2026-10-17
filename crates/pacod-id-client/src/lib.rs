@@ -4,7 +4,7 @@
 //!   organisations and scopes, the feed, introspection, session revocation, token exchange.
 //! - [`Verifier`]: checks the access tokens browsers and apps bring (`at+jwt`, issuer, audience).
 //! - [`AuthzCache`]: the product's copy of the bindings, kept current by the feed.
-//! - [`Introspector`]: service tokens (`pidt_`, imported `acma_`), cached 60 seconds.
+//! - [`Introspector`]: service tokens (`pidt_`, imported `pgwa_`), cached 60 seconds.
 //! - [`Authenticator`]: all of the above for one request: who is calling, refused when the session
 //!   ended or the principal is disabled.
 //! - [`TokenExchanger`]: the short tokens a product's facade calls pacod-id's admin API with.

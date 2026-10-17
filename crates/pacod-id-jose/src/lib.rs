@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn es256_round_trip() {
         let key = es256("k1");
-        let token = key.sign("at+jwt", &serde_json::json!({ "sub": "usr_1", "aud": "acme" })).unwrap();
+        let token = key.sign("at+jwt", &serde_json::json!({ "sub": "usr_1", "aud": "pacod-gw" })).unwrap();
         let v = verifier(&[&key]).verify(&token, &[Alg::ES256]).unwrap();
         assert_eq!(v.header, Header { alg: Alg::ES256, kid: "k1".into(), typ: Some("at+jwt".into()) });
         assert_eq!(v.claims["sub"], "usr_1");

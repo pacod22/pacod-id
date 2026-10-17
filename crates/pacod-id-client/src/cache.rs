@@ -378,7 +378,7 @@ mod tests {
     fn events_change_the_copy() {
         let mut s = Snapshot::from_json(&json!({
             "seq": 10, "catalog": { "version": 1 },
-            "bindings": [{ "id": "rb_1", "principal": "usr_a", "role": "acme.viewer", "path": ["platform", "organisation:o1"] }],
+            "bindings": [{ "id": "rb_1", "principal": "usr_a", "role": "gw.viewer", "path": ["platform", "organisation:o1"] }],
             "disabled": ["usr_x"], "deleted": [], "revoked_sids": [{ "sid": "sid_1", "sub": "usr_a" }],
             "scopes": [{ "type": "organisation", "id": "o1", "display_name": "Acme" }]
         }))
@@ -387,12 +387,12 @@ mod tests {
         s.apply(&event(
             11,
             "binding.added",
-            json!({ "id": "rb_2", "principal": "usr_a", "role": "acme.auditor", "path": ["platform"] }),
+            json!({ "id": "rb_2", "principal": "usr_a", "role": "gw.auditor", "path": ["platform"] }),
         ));
         s.apply(&event(
             11,
             "binding.added",
-            json!({ "id": "rb_2", "principal": "usr_a", "role": "acme.auditor", "path": ["platform"] }),
+            json!({ "id": "rb_2", "principal": "usr_a", "role": "gw.auditor", "path": ["platform"] }),
         ));
         assert_eq!(s.bindings_of("usr_a").len(), 2, "the same binding twice is one");
         s.apply(&event(12, "binding.removed", json!({ "id": "rb_1", "principal": "usr_a" })));

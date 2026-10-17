@@ -1,4 +1,8 @@
-# Acme's roles and permissions, for pacod-id's rules engine and the tests.
+# The gateway's roles and permissions (pacod-gw's authz/gw.yaml), for pacod-id's rules engine.
+#
+# The core reads this file at build time (crates/pacod-gw-core/src/mgmt/auth.rs) and the console
+# generates ui/src/lib/authz.generated.ts from it (`make authz`). The vectors next to it
+# (authz/vectors/) pin what each role may do and run in both.
 #
 # Permissions:
 #   org.manage, org.read              an organisation: change it, see it
@@ -7,7 +11,7 @@
 #   audit_log.read                    the audit log of administrative changes
 #   members.manage                    give and take roles inside an organisation
 #   platform.manage                   everything else that belongs to the installation
-product: acme
+product: gw
 scope_types:
   workspace: { parent: organisation }
 roles:

@@ -1,6 +1,6 @@
 //! Imports: the people, admin tokens, roles and invitations a product kept itself
-//! before it signed people in through pacod-id. `pacod-id import acme <file>` reads acme's
-//! `acme-core identity export`.
+//! before it signed people in through pacod-id. `pacod-id import gw <file>` reads the gateway's
+//! `pacod-gw-core identity export`.
 //!
 //! The import keeps ids (`usr_…` accounts, `tok_…` service accounts, `rb_…` bindings, `inv_…`
 //! invitations), copies password and link hashes as they are, and runs in one transaction: all
@@ -30,37 +30,37 @@ use crate::store::accounts::normalize_email;
 use crate::store::authz::{self as db, ScopeRow};
 use crate::store::{Store, StoreError, changes};
 
-/// The format `acme-core identity export` writes.
-pub const ACME_FORMAT: &str = "acme-identity/1";
+/// The format `pacod-gw-core identity export` writes.
+pub const GW_FORMAT: &str = "pacod-gw-identity/1";
 
-/// Acme's export (`acme-core identity export`).
+/// The gateway's export (`pacod-gw-core identity export`).
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AcmeExport {
+pub struct GwExport {
     pub format: String,
     pub exported_at: DateTime<Utc>,
-    /// Acme's configuration version the export was read at.
+    /// The gateway's configuration version the export was read at.
     pub config_version: i64,
-    /// Acme's manifest, pushed when pacod-id has none of acme's yet.
+    /// The gateway's manifest, pushed when pacod-id has none of the gateway's yet.
     pub manifest: Value,
     #[serde(default)]
     pub settings: Value,
     #[serde(default)]
-    pub organisations: Vec<AcmeOrganisation>,
+    pub organisations: Vec<GwOrganisation>,
     #[serde(default)]
-    pub workspaces: Vec<AcmeWorkspace>,
+    pub workspaces: Vec<GwWorkspace>,
     #[serde(default)]
-    pub users: Vec<AcmeObject>,
+    pub users: Vec<GwObject>,
     #[serde(default)]
-    pub admin_tokens: Vec<AcmeObject>,
+    pub admin_tokens: Vec<GwObject>,
     #[serde(default)]
-    pub role_bindings: Vec<AcmeObject>,
+    pub role_bindings: Vec<GwObject>,
     #[serde(default)]
-    pub invitations: Vec<AcmeInvitation>,
+    pub invitations: Vec<GwInvitation>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AcmeOrganisation {
+pub struct GwOrganisation {
     pub id: String,
     pub name: String,
     #[serde(default)]
@@ -70,7 +70,7 @@ pub struct AcmeOrganisation {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AcmeWorkspace {
+pub struct GwWorkspace {
     pub id: String,
     pub organisation_id: String,
     #[serde(default)]
@@ -79,10 +79,10 @@ pub struct AcmeWorkspace {
     pub system: bool,
 }
 
-/// A configuration document as acme stores it: the raw `doc`, so that a field left out
+/// A configuration document as the gateway stores it: the raw `doc`, so that a field left out
 /// (an unproven address) stays told apart from one set.
 #[derive(Debug, Deserialize)]
-pub struct AcmeObject {
+pub struct GwObject {
     pub id: String,
     pub created_at: DateTime<Utc>,
     #[serde(default)]
@@ -91,7 +91,7 @@ pub struct AcmeObject {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AcmeInvitation {
+pub struct GwInvitation {
     pub id: String,
     /// SHA-256 of the link's token, hex.
     pub token_hash: String,
@@ -123,7 +123,7 @@ pub struct Counts {
 pub struct Report {
     pub dry_run: bool,
     pub applied: bool,
-    /// `pushed`: pacod-id had no catalogue of acme's; `present`: the stored one is used.
+    /// `pushed`: pacod-id had no catalogue of the gateway's; `present`: the stored one is used.
     pub catalog: &'static str,
     pub organisations: Counts,
     pub workspaces: Counts,
@@ -315,21 +315,21 @@ fn plain_id(id: &str, prefix: &str) -> bool {
         && !id.chars().any(|c| c == ':' || c == '/' || c.is_whitespace())
 }
 
-/// Acme's role (`org_admin`) as pacod-id names it, and its scope.
+/// The gateway's role (`org_admin`) as pacod-id names it, and its scope.
 fn binding_of(doc: &Value) -> Option<(String, ScopeRef)> {
-    let role = format!("acme.{}", doc["role"].as_str()?);
+    let role = format!("gw.{}", doc["role"].as_str()?);
     let scope = match (doc["scope"]["type"].as_str()?, doc["scope"]["id"].as_str()) {
         ("platform", _) => ScopeRef::platform(),
         ("organisation", Some(o)) => ScopeRef::organisation(o),
-        ("workspace", Some(w)) => ScopeRef::of("acme.workspace", w),
+        ("workspace", Some(w)) => ScopeRef::of("gw.workspace", w),
         _ => return None,
     };
     Some((role, scope))
 }
 
-/// Whether the catalogue lets acme's role be held at this kind of scope.
+/// Whether the catalogue lets the gateway's role be held at this kind of scope.
 fn fits(catalog: &Catalog, role: &str, scope: &ScopeRef) -> bool {
-    catalog.manifest("acme").and_then(|m| m.role(role)).is_some_and(|r| r.at.contains(&scope.kind))
+    catalog.manifest("gw").and_then(|m| m.role(role)).is_some_and(|r| r.at.contains(&scope.kind))
 }
 
 fn hex(s: &str) -> Option<Vec<u8>> {
@@ -349,25 +349,25 @@ fn duplicates<'a>(kind: &str, ids: impl Iterator<Item = &'a str>, report: &mut R
     }
 }
 
-/// Imports acme's export into `realm` (acme's, `acme` by default). `config` names
+/// Imports the gateway's export into `realm` (the gateway's, `gateway` by default). `config` names
 /// the clients to tell of the sessions the import ends (back-channel logout).
-pub async fn acme(
+pub async fn gw(
     store: &Store,
     config: &Config,
     realm: &str,
-    export: &AcmeExport,
+    export: &GwExport,
     dry_run: bool,
 ) -> Result<Report, ImportError> {
-    const PRODUCT: &str = "acme";
-    if export.format != ACME_FORMAT {
-        return Err(ImportError::Invalid(format!("this is not an acme identity export ({ACME_FORMAT})")));
+    const PRODUCT: &str = "gw";
+    if export.format != GW_FORMAT {
+        return Err(ImportError::Invalid(format!("this is not a gateway identity export ({GW_FORMAT})")));
     }
     let manifest = serde_json::from_value(export.manifest.clone())
         .map_err(|e| e.to_string())
         .and_then(|source| Manifest::from_source(source).map_err(|e| e.to_string()))
         .map_err(|e| ImportError::Invalid(format!("the export's manifest does not read: {e}")))?;
     if manifest.product() != PRODUCT {
-        return Err(ImportError::Invalid("the export's manifest is not acme's".into()));
+        return Err(ImportError::Invalid("the export's manifest is not the gateway's".into()));
     }
 
     let mut tx = store.begin().await?;
@@ -386,14 +386,14 @@ pub async fn acme(
         && b.realm != realm
     {
         return Err(ImportError::Invalid(format!(
-            "the last import of acme went to the realm {:?}, not {realm:?}",
+            "the last import of the gateway went to the realm {:?}, not {realm:?}",
             b.realm
         )));
     }
     let earlier = before.map(|b| b.brought).unwrap_or_default();
     let mut report = Report { dry_run, ..Default::default() };
 
-    // The catalogue: the one acme pushed when it ran with pacod-id already, else the
+    // The catalogue: the one the gateway pushed when it ran with pacod-id already, else the
     // export's.
     let mut catalog = base_catalog();
     let mut have_gw = false;
@@ -409,7 +409,7 @@ pub async fn acme(
             }
             // Not overwritten past the push's checks: someone must look at it.
             Err(e) if product == PRODUCT => {
-                return Err(ImportError::Invalid(format!("the stored catalogue of acme does not read: {e}")));
+                return Err(ImportError::Invalid(format!("the stored catalogue of the gateway does not read: {e}")));
             }
             Err(_) => {}
         }
@@ -598,7 +598,7 @@ async fn retire(
     Ok(())
 }
 
-async fn organisations(tx: &mut PgConnection, export: &AcmeExport, report: &mut Report) -> Result<(), ImportError> {
+async fn organisations(tx: &mut PgConnection, export: &GwExport, report: &mut Report) -> Result<(), ImportError> {
     for o in &export.organisations {
         if !plain_id(&o.id, "org") {
             report.conflicts.push(format!("organisation {:?}: not an id pacod-id takes", o.id));
@@ -616,7 +616,7 @@ async fn organisations(tx: &mut PgConnection, export: &AcmeExport, report: &mut 
             continue;
         }
         let before = db::organisation(tx, &o.id).await?;
-        db::organisation_upsert(tx, &o.id, &o.name, &o.display_name, o.system, "acme").await?;
+        db::organisation_upsert(tx, &o.id, &o.name, &o.display_name, o.system, "gw").await?;
         let after = db::organisation(tx, &o.id).await?.ok_or(StoreError::NotFound)?;
         if before.as_ref() == Some(&after) {
             report.organisations.unchanged += 1;
@@ -628,7 +628,7 @@ async fn organisations(tx: &mut PgConnection, export: &AcmeExport, report: &mut 
     Ok(())
 }
 
-async fn workspaces(tx: &mut PgConnection, export: &AcmeExport, report: &mut Report) -> Result<(), ImportError> {
+async fn workspaces(tx: &mut PgConnection, export: &GwExport, report: &mut Report) -> Result<(), ImportError> {
     for w in &export.workspaces {
         if !plain_id(&w.id, "ws") {
             report.conflicts.push(format!("workspace {:?}: not an id pacod-id takes", w.id));
@@ -642,32 +642,32 @@ async fn workspaces(tx: &mut PgConnection, export: &AcmeExport, report: &mut Rep
             continue;
         };
         let row = ScopeRow {
-            kind: "acme.workspace".into(),
+            kind: "gw.workspace".into(),
             id: w.id.clone(),
             parent: parent.clone(),
-            product: "acme".into(),
+            product: "gw".into(),
             display_name: w.display_name.clone(),
             system: w.system,
         };
-        let before = db::scope(tx, "acme.workspace", &w.id).await?;
-        if before.as_ref().is_some_and(|b| b.parent != parent || b.product != "acme") {
+        let before = db::scope(tx, "gw.workspace", &w.id).await?;
+        if before.as_ref().is_some_and(|b| b.parent != parent || b.product != "gw") {
             report.conflicts.push(format!("workspace {}: pacod-id has it under another organisation or product", w.id));
             continue;
         }
         db::scope_upsert(tx, &row).await?;
-        let after = db::scope(tx, "acme.workspace", &w.id).await?.ok_or(StoreError::NotFound)?;
+        let after = db::scope(tx, "gw.workspace", &w.id).await?.ok_or(StoreError::NotFound)?;
         if before.as_ref() == Some(&after) {
             report.workspaces.unchanged += 1;
             continue;
         }
-        path.push(ScopeRef::of("acme.workspace", &w.id));
+        path.push(ScopeRef::of("gw.workspace", &w.id));
         changes::record(
             tx,
             "scope.upserted",
-            Some("acme"),
+            Some("gw"),
             None,
             json!({
-                "type": "acme.workspace", "id": w.id, "parent": parent.to_string(), "display_name": after.display_name,
+                "type": "gw.workspace", "id": w.id, "parent": parent.to_string(), "display_name": after.display_name,
                 "system": after.system, "path": path_json(&path),
             }),
         )
@@ -677,12 +677,12 @@ async fn workspaces(tx: &mut PgConnection, export: &AcmeExport, report: &mut Rep
     Ok(())
 }
 
-/// Acme's users as accounts. Returns the principals the export brings, by id; adds to
+/// The gateway's users as accounts. Returns the principals the export brings, by id; adds to
 /// `sign_out` the accounts whose sessions must end (a new password, disabled now).
 async fn accounts(
     tx: &mut PgConnection,
     realm: &str,
-    export: &AcmeExport,
+    export: &GwExport,
     report: &mut Report,
     sign_out: &mut BTreeSet<String>,
 ) -> Result<BTreeMap<String, &'static str>, ImportError> {
@@ -701,7 +701,7 @@ async fn accounts(
             .await?;
         if let Some(other) = taken {
             report.conflicts.push(format!(
-                "user {}: pacod-id has the address {email} as account {other}; acme's accounts are not merged",
+                "user {}: pacod-id has the address {email} as account {other}; a gateway's accounts are not merged",
                 u.id
             ));
             continue;
@@ -718,7 +718,7 @@ async fn accounts(
         let hash = d["password_hash"].as_str().filter(|h| h.starts_with('$')).map(str::to_owned);
         let before = sqlx::query(
             "SELECT a.email, a.display_name, a.status, a.password_hash, a.email_verified_source,
-                    EXISTS (SELECT 1 FROM account_external_ids x WHERE x.source = 'acme' AND x.external_id = a.id
+                    EXISTS (SELECT 1 FROM account_external_ids x WHERE x.source = 'gw' AND x.external_id = a.id
                             AND x.account_id = a.id) AS ours
              FROM accounts a WHERE a.id = $1",
         )
@@ -758,7 +758,9 @@ async fn accounts(
             }
             // An account by this id that an import did not bring is someone else's.
             Some(b) if !b.try_get::<bool, _>("ours")? => {
-                report.conflicts.push(format!("user {}: pacod-id has an account by this id that is not acme's", u.id));
+                report
+                    .conflicts
+                    .push(format!("user {}: pacod-id has an account by this id that is not the gateway's", u.id));
                 continue;
             }
             Some(b) => {
@@ -808,7 +810,7 @@ async fn accounts(
         }
         // Where the account came from: the next import may change it, nothing else's.
         sqlx::query(
-            "INSERT INTO account_external_ids (source, external_id, account_id) VALUES ('acme', $1, $1) ON CONFLICT DO NOTHING",
+            "INSERT INTO account_external_ids (source, external_id, account_id) VALUES ('gw', $1, $1) ON CONFLICT DO NOTHING",
         )
         .bind(&u.id)
         .execute(&mut *tx)
@@ -818,11 +820,11 @@ async fn accounts(
     Ok(principals)
 }
 
-/// Acme's admin tokens as platform service accounts, each with its token kept as a
-/// legacy one: pacod-id checks `acma_…` under acme's pepper (`PID_LEGACY_PEPPERS`).
+/// The gateway's admin tokens as platform service accounts, each with its token kept as a
+/// legacy one: pacod-id checks `pgwa_…` under the gateway's pepper (`PID_LEGACY_PEPPERS`).
 async fn service_accounts(
     tx: &mut PgConnection,
-    export: &AcmeExport,
+    export: &GwExport,
     report: &mut Report,
 ) -> Result<BTreeMap<String, &'static str>, ImportError> {
     let mut principals = BTreeMap::new();
@@ -874,9 +876,10 @@ async fn service_accounts(
             && (b.try_get::<String, _>("created_by")? != "import"
                 || b.try_get::<Option<String>, _>("organisation_id")?.is_some())
         {
-            report
-                .conflicts
-                .push(format!("admin token {}: pacod-id has a service account by this id that is not acme's", t.id));
+            report.conflicts.push(format!(
+                "admin token {}: pacod-id has a service account by this id that is not the gateway's",
+                t.id
+            ));
             continue;
         }
         let mut changed = match &before {
@@ -930,7 +933,7 @@ async fn service_accounts(
             }
         };
         let has_token: Option<String> = sqlx::query_scalar(
-            "SELECT service_account_id FROM service_tokens WHERE legacy_pepper_id = 'acme' AND legacy_hmac = $1",
+            "SELECT service_account_id FROM service_tokens WHERE legacy_pepper_id = 'gw' AND legacy_hmac = $1",
         )
         .bind(&hmac)
         .fetch_optional(&mut *tx)
@@ -944,7 +947,7 @@ async fn service_accounts(
             None => {
                 sqlx::query(
                     "INSERT INTO service_tokens (id, service_account_id, legacy_hmac, legacy_pepper_id, hint, expires_at, created_at)
-                     VALUES ($1, $2, $3, 'acme', $4, $5, $6)",
+                     VALUES ($1, $2, $3, 'gw', $4, $5, $6)",
                 )
                 .bind(crate::crypto::tokens::new_id("stk"))
                 .bind(&t.id)
@@ -967,11 +970,11 @@ async fn service_accounts(
     Ok(principals)
 }
 
-/// The role bindings; returns the ids acme has now (created here or held already).
+/// The role bindings; returns the ids the gateway has now (created here or held already).
 async fn role_bindings(
     tx: &mut PgConnection,
     catalog: &Catalog,
-    export: &AcmeExport,
+    export: &GwExport,
     principals: &BTreeMap<String, &'static str>,
     report: &mut Report,
 ) -> Result<Vec<String>, ImportError> {
@@ -1025,7 +1028,7 @@ async fn role_bindings(
     }
     let applied = bindings::import(tx, catalog, &add).await?;
     report.bindings.created += applied.added.len();
-    // Held already under another id: the same role, nothing to add, and not acme's to
+    // Held already under another id: the same role, nothing to add, and not the gateway's to
     // take away later.
     report.bindings.unchanged += add.len() - applied.added.len();
     held.extend(applied.added);
@@ -1037,7 +1040,7 @@ async fn invitations(
     tx: &mut PgConnection,
     catalog: &Catalog,
     realm: &str,
-    export: &AcmeExport,
+    export: &GwExport,
     principals: &BTreeMap<String, &'static str>,
     report: &mut Report,
 ) -> Result<Vec<String>, ImportError> {
@@ -1052,7 +1055,7 @@ async fn invitations(
             continue;
         }
         let scope = match &i.workspace_id {
-            Some(w) => ScopeRef::of("acme.workspace", w),
+            Some(w) => ScopeRef::of("gw.workspace", w),
             None => ScopeRef::organisation(&i.organisation_id),
         };
         if db::path_of(tx, &scope).await?.is_none() {
@@ -1060,7 +1063,7 @@ async fn invitations(
             continue;
         }
         let email = normalize_email(&i.email);
-        let role = format!("acme.{}", i.role);
+        let role = format!("gw.{}", i.role);
         if !fits(catalog, &role, &scope) {
             report.conflicts.push(format!("invitation {}: {role} cannot be held at {scope}", i.id));
             continue;

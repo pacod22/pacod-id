@@ -111,7 +111,7 @@ pub struct ServiceTokenRow {
     pub id: String,
     pub service_account_id: String,
     pub hint: String,
-    /// Imported from a product (`acme` for acma_ tokens).
+    /// Imported from a product (`gw` for pgwa_ tokens).
     pub legacy_product: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub last_used_at: Option<DateTime<Utc>>,

@@ -13,18 +13,18 @@ import crypto from 'node:crypto';
 
 export const PORT = 27370;
 export const REALMS = {
-	acme: `http://id.acme.e2e.test:${PORT}`,
+	gateway: `http://id.gateway.e2e.test:${PORT}`,
 	shop: `http://id.shop.e2e.test:${PORT}`,
 	bazaar: `http://id.bazaar.e2e.test:${PORT}`
 } as const;
 export type RealmName = keyof typeof REALMS;
 export const CLIENTS: Record<RealmName, string> = {
-	acme: 'demo-acme',
+	gateway: 'demo-gw',
 	shop: 'demo-shop',
 	bazaar: 'demo-bazaar'
 };
 /** The path of each realm's application, where its sign-ins return. */
-const APP_PATH: Record<RealmName, string> = { acme: 'acme', shop: 'shop', bazaar: 'bazaar' };
+const APP_PATH: Record<RealmName, string> = { gateway: 'gw', shop: 'shop', bazaar: 'bazaar' };
 export const APP = 'http://app.e2e.test:27399';
 export const MAIL = 'http://127.0.0.1:27326';
 export const ADMIN = { email: 'root@e2e.test', password: 'the e2e bootstrap passphrase' };
@@ -141,14 +141,14 @@ export async function call(
 	);
 }
 
-/** The bootstrap admin, signed in to acme realm in a context of its own. */
+/** The bootstrap admin, signed in to the gateway realm in a context of its own. */
 export async function adminContext(browser: Browser) {
 	const context = await browser.newContext();
 	const page = await context.newPage();
-	await authorize(page, 'acme');
+	await authorize(page, 'gateway');
 	await signIn(page, ADMIN.email, ADMIN.password);
 	await landsInApp(page);
-	await page.goto(`${REALMS.acme}/account`);
+	await page.goto(`${REALMS.gateway}/account`);
 	return {
 		context,
 		post: (path: string, data: unknown = {}) => call(page, 'POST', path, data),

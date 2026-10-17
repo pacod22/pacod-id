@@ -46,9 +46,9 @@ describe('components', () => {
 		expect(head).toContain('noindex');
 	});
 
-	it('AuthCard defaults to acme brand, and the wordmark can be left out', () => {
+	it('AuthCard defaults to the gateway brand, and the wordmark can be left out', () => {
 		expect(render(AuthCard, { props: { title: 't', children: text('x') } }).body).toContain(
-			'Acme · Console'
+			'pacod-gw · AI Gateway'
 		);
 		const without = render(AuthCard, {
 			props: { title: 't', wordmark: '', children: text('x') }

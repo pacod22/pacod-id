@@ -70,7 +70,7 @@ pub struct Authenticator {
 }
 
 /// Whether a bearer is a JWT (`{"…` in base64url, three parts) rather than a service token
-/// (`pidt_…`, `acma_…`).
+/// (`pidt_…`, `pgwa_…`).
 fn is_jwt(token: &str) -> bool {
     token.starts_with("eyJ") && token.split('.').count() == 3
 }

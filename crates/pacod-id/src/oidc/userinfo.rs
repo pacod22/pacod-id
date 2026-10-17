@@ -109,7 +109,7 @@ async fn revoke(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> Re
 }
 
 /// What a token is (RFC 7662), for a product's service: a service token (pidt_, or an imported
-/// acma_) or an access token pacod-id issued. Anything else is inactive, without a reason.
+/// pgwa_) or an access token pacod-id issued. Anything else is inactive, without a reason.
 async fn introspect(
     State(st): State<Shared>,
     caller: CallerClient,

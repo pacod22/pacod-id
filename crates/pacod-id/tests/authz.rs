@@ -11,7 +11,7 @@ use pacod_id_authz::{Manifest, ScopeRef, Subject};
 use reqwest::Method;
 use serde_json::{Value, json};
 
-const CORE: &str = "a-secret-for-acme-core-0123456789";
+const CORE: &str = "a-secret-for-the-gateway-core-0123456789";
 const API: &str = "a-secret-for-shop-s-api-service-0123456789";
 
 fn manifest(name: &str) -> Value {
@@ -19,7 +19,7 @@ fn manifest(name: &str) -> Value {
     serde_json::to_value(Manifest::from_yaml(&text).unwrap().source()).unwrap()
 }
 
-/// A pacod-id with acme-core and shop-api (shop's service) let in.
+/// A pacod-id with gw-core and shop-api (shop's service) let in.
 async fn start() -> TestId {
     let db = common::fresh_database().await;
     let id = TestId::start_with(
@@ -28,7 +28,7 @@ async fn start() -> TestId {
             r#"
 [[client]]
 id = "shop-api"
-realm = "acme"
+realm = "gateway"
 kind = "service"
 product = "shop"
 audience = "shop-api"
@@ -38,19 +38,18 @@ audience = "shop-api"
         |_| {},
     )
     .await;
-    id.service_secret("acme-core", CORE).await;
+    id.service_secret("gw-core", CORE).await;
     id.service_secret("shop-api", API).await;
     id
 }
 
 async fn core(id: &TestId, method: Method, path: &str, body: Option<Value>) -> (u16, Value) {
-    id.internal_call(method, path, "acme-core", CORE, body).await
+    id.internal_call(method, path, "gw-core", CORE, body).await
 }
 
-/// acme's catalogue, an organisation org_1 with a workspace ws_1.
-async fn with_acme(id: &TestId) {
-    let (s, v) =
-        core(id, Method::PUT, "/internal/v1/catalog/acme", Some(json!({ "manifest": manifest("acme") }))).await;
+/// gw's catalogue, an organisation org_1 with a workspace ws_1.
+async fn gateway(id: &TestId) {
+    let (s, v) = core(id, Method::PUT, "/internal/v1/catalog/gw", Some(json!({ "manifest": manifest("gw") }))).await;
     assert_eq!(s, 200, "{v}");
     let (s, v) = core(
         id,
@@ -63,7 +62,7 @@ async fn with_acme(id: &TestId) {
     let (s, v) = core(
         id,
         Method::PUT,
-        "/internal/v1/scopes/acme.workspace/ws_1",
+        "/internal/v1/scopes/gw.workspace/ws_1",
         Some(json!({ "parent": "organisation:org_1", "display_name": "Prod" })),
     )
     .await;
@@ -104,32 +103,32 @@ async fn unbind(id: &TestId, binding: &str, actor: &Subject) -> Result<bindings:
 #[tokio::test]
 async fn products_push_their_catalogue_and_only_their_own() {
     let id = start().await;
-    let acme = json!({ "manifest": manifest("acme") });
+    let gw = json!({ "manifest": manifest("gw") });
     let (s, v) =
-        id.internal_call(Method::PUT, "/internal/v1/catalog/acme", "console", CLIENT_SECRET, Some(acme.clone())).await;
+        id.internal_call(Method::PUT, "/internal/v1/catalog/gw", "console", CLIENT_SECRET, Some(gw.clone())).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (403, Some("not_a_service")), "a BFF pushes nothing");
     let (s, v) =
         core(&id, Method::PUT, "/internal/v1/catalog/shop", Some(json!({ "manifest": manifest("shop") }))).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (403, Some("wrong_product")));
-    let (s, v) = core(&id, Method::PUT, "/internal/v1/catalog/id", Some(json!({ "manifest": manifest("acme") }))).await;
+    let (s, v) = core(&id, Method::PUT, "/internal/v1/catalog/id", Some(json!({ "manifest": manifest("gw") }))).await;
     assert_eq!(s, 403, "{v}");
 
-    let (s, first) = core(&id, Method::PUT, "/internal/v1/catalog/acme", Some(acme.clone())).await;
+    let (s, first) = core(&id, Method::PUT, "/internal/v1/catalog/gw", Some(gw.clone())).await;
     assert_eq!((s, first["version"].as_i64(), first["changed"].as_bool()), (200, Some(1), Some(true)), "{first}");
-    let (_, again) = core(&id, Method::PUT, "/internal/v1/catalog/acme", Some(acme.clone())).await;
+    let (_, again) = core(&id, Method::PUT, "/internal/v1/catalog/gw", Some(gw.clone())).await;
     assert_eq!(
         (again["version"].as_i64(), again["changed"].as_bool()),
         (Some(1), Some(false)),
         "the same manifest changes nothing"
     );
     assert_eq!(again["seq"], first["seq"]);
-    assert!(id.running.state.catalog.get().manifest("acme").is_some());
+    assert!(id.running.state.catalog.get().manifest("gw").is_some());
 
-    let mut bad = manifest("acme");
+    let mut bad = manifest("gw");
     bad["grant"] = json!({});
-    let (s, v) = core(&id, Method::PUT, "/internal/v1/catalog/acme", Some(json!({ "manifest": bad }))).await;
+    let (s, v) = core(&id, Method::PUT, "/internal/v1/catalog/gw", Some(json!({ "manifest": bad }))).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (422, Some("missing_grant_default")), "{v}");
-    let (s, v) = core(&id, Method::GET, "/internal/v1/catalog/acme", None).await;
+    let (s, v) = core(&id, Method::GET, "/internal/v1/catalog/gw", None).await;
     assert_eq!((s, v["version"].as_i64()), (200, Some(1)));
     id.running.stop().await;
 }
@@ -137,21 +136,21 @@ async fn products_push_their_catalogue_and_only_their_own() {
 #[tokio::test]
 async fn a_dropped_role_in_use_needs_a_migration() {
     let id = start().await;
-    with_acme(&id).await;
+    gateway(&id).await;
     let ada = common::account(&id, "ada@example.com").await;
-    bind(&id, &ada.id, "acme.auditor", ScopeRef::organisation("org_1")).await.unwrap();
-    bind(&id, &ada.id, "acme.viewer", ScopeRef::of("acme.workspace", "ws_1")).await.unwrap();
-    let mut next = manifest("acme");
+    bind(&id, &ada.id, "gw.auditor", ScopeRef::organisation("org_1")).await.unwrap();
+    bind(&id, &ada.id, "gw.viewer", ScopeRef::of("gw.workspace", "ws_1")).await.unwrap();
+    let mut next = manifest("gw");
     next["roles"].as_object_mut().unwrap().remove("auditor");
     next["roles"]["viewer"]["at"] = json!(["platform", "organisation"]);
-    let (s, v) = core(&id, Method::PUT, "/internal/v1/catalog/acme", Some(json!({ "manifest": next }))).await;
+    let (s, v) = core(&id, Method::PUT, "/internal/v1/catalog/gw", Some(json!({ "manifest": next }))).await;
     assert_eq!(s, 409, "{v}");
-    assert_eq!(v["error"]["details"]["roles"], json!(["acme.auditor", "acme.viewer"]));
+    assert_eq!(v["error"]["details"]["roles"], json!(["gw.auditor", "gw.viewer"]));
     let (s, v) = core(
         &id,
         Method::PUT,
-        "/internal/v1/catalog/acme",
-        Some(json!({ "manifest": next, "migrate": { "acme.auditor": "acme.viewer", "acme.viewer": null } })),
+        "/internal/v1/catalog/gw",
+        Some(json!({ "manifest": next, "migrate": { "gw.auditor": "gw.viewer", "gw.viewer": null } })),
     )
     .await;
     assert_eq!((s, v["version"].as_i64()), (200, Some(2)), "{v}");
@@ -161,12 +160,12 @@ async fn a_dropped_role_in_use_needs_a_migration() {
             .fetch_all(id.store().pool())
             .await
             .unwrap();
-    assert_eq!(held, [("acme.viewer".to_owned(), "organisation".to_owned())]);
+    assert_eq!(held, [("gw.viewer".to_owned(), "organisation".to_owned())]);
     // A scope type with registered scopes stays.
     let mut flat = next.clone();
     flat.as_object_mut().unwrap().remove("scope_types");
     flat["roles"].as_object_mut().unwrap().remove("workspace_admin");
-    let (s, v) = core(&id, Method::PUT, "/internal/v1/catalog/acme", Some(json!({ "manifest": flat }))).await;
+    let (s, v) = core(&id, Method::PUT, "/internal/v1/catalog/gw", Some(json!({ "manifest": flat }))).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (409, Some("scope_type_in_use")), "{v}");
     id.running.stop().await;
 }
@@ -177,24 +176,24 @@ async fn organisations_and_scopes() {
     let (s, v) = core(
         &id,
         Method::PUT,
-        "/internal/v1/scopes/acme.workspace/ws_0",
+        "/internal/v1/scopes/gw.workspace/ws_0",
         Some(json!({ "parent": "organisation:org_1" })),
     )
     .await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (409, Some("catalog_missing")));
-    with_acme(&id).await;
+    gateway(&id).await;
     let put = |path: &'static str, body: Value| core(&id, Method::PUT, path, Some(body));
-    let (s, v) = put("/internal/v1/scopes/acme.workspace/ws_2", json!({ "parent": "organisation:org_9" })).await;
+    let (s, v) = put("/internal/v1/scopes/gw.workspace/ws_2", json!({ "parent": "organisation:org_9" })).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (409, Some("scope_unknown")));
-    let (s, v) = put("/internal/v1/scopes/acme.workspace/ws_2", json!({ "parent": "platform" })).await;
+    let (s, v) = put("/internal/v1/scopes/gw.workspace/ws_2", json!({ "parent": "platform" })).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (422, Some("bad_parent")));
     let (s, v) = put("/internal/v1/scopes/shop.profile/p_1", json!({ "parent": "platform" })).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (403, Some("wrong_product")));
-    let (s, v) = put("/internal/v1/scopes/acme.workspace/a b", json!({ "parent": "organisation:org_1" })).await;
+    let (s, v) = put("/internal/v1/scopes/gw.workspace/a b", json!({ "parent": "organisation:org_1" })).await;
     assert_eq!(s, 422, "{v}");
     let (_, v) = put("/internal/v1/organisations/org_2", json!({ "slug": "other" })).await;
     let before = v["seq"].as_i64().unwrap();
-    let (s, v) = put("/internal/v1/scopes/acme.workspace/ws_1", json!({ "parent": "organisation:org_2" })).await;
+    let (s, v) = put("/internal/v1/scopes/gw.workspace/ws_1", json!({ "parent": "organisation:org_2" })).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (409, Some("parent_changed")));
     let (s, v) = put("/internal/v1/organisations/org_3", json!({ "slug": "acme" })).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (409, Some("slug_taken")));
@@ -202,7 +201,7 @@ async fn organisations_and_scopes() {
     let (_, v) = put("/internal/v1/organisations/org_2", json!({ "slug": "other" })).await;
     assert_eq!(v["seq"].as_i64(), Some(before));
 
-    // shop registers the same organisation; acme's delete only unregisters it.
+    // shop registers the same organisation; the gateway's delete only unregisters it.
     let (s, _) = id
         .internal_call(
             Method::PUT,
@@ -214,13 +213,13 @@ async fn organisations_and_scopes() {
         .await;
     assert_eq!(s, 200);
     let ada = common::account(&id, "ada@example.com").await;
-    bind(&id, &ada.id, "acme.org_admin", ScopeRef::organisation("org_1")).await.unwrap();
-    bind(&id, &ada.id, "acme.workspace_admin", ScopeRef::of("acme.workspace", "ws_1")).await.unwrap();
-    // Pending invitations at the organisation: acme's, and one of another product's.
-    for (n, role) in [(1, "acme.org_member"), (2, "shop.member")] {
+    bind(&id, &ada.id, "gw.org_admin", ScopeRef::organisation("org_1")).await.unwrap();
+    bind(&id, &ada.id, "gw.workspace_admin", ScopeRef::of("gw.workspace", "ws_1")).await.unwrap();
+    // Pending invitations at the organisation: the gateway's, and one of another product's.
+    for (n, role) in [(1, "gw.org_member"), (2, "shop.member")] {
         sqlx::query(
             "INSERT INTO invitations (id, token_hash, email, role, scope_type, scope_id, realm, expires_at)
-             VALUES ($1, $2, $3, $4, 'organisation', 'org_1', 'acme', now() + interval '1 day')",
+             VALUES ($1, $2, $3, $4, 'organisation', 'org_1', 'gateway', now() + interval '1 day')",
         )
         .bind(format!("inv_{n}"))
         .bind(vec![n as u8; 32])
@@ -230,7 +229,7 @@ async fn organisations_and_scopes() {
         .await
         .unwrap();
     }
-    let (s, v) = core(&id, Method::DELETE, "/internal/v1/organisations/org_1?product=acme", None).await;
+    let (s, v) = core(&id, Method::DELETE, "/internal/v1/organisations/org_1?product=gw", None).await;
     assert_eq!(s, 200);
     // The feed tells followers the organisation is now shop's only, as a snapshot would.
     let (kind, payload): (String, serde_json::Value) =
@@ -243,7 +242,7 @@ async fn organisations_and_scopes() {
         (kind.as_str(), &payload["products"], &payload["status"]),
         ("scope.upserted", &json!(["shop"]), &json!("active"))
     );
-    // What acme put there left with it: its workspace, its roles, its invitation.
+    // What the gateway put there left with it: its workspace, its roles, its invitation.
     let kinds: Vec<String> = sqlx::query_scalar("SELECT kind FROM authz_changes WHERE version > $1 ORDER BY version")
         .bind(v["seq"].as_i64().unwrap() - 4)
         .fetch_all(id.store().pool())
@@ -259,7 +258,7 @@ async fn organisations_and_scopes() {
     .unwrap();
     assert_eq!((bindings, workspaces, invitations), (0, 0, vec!["shop.member".to_owned()]));
     let (s, v) =
-        id.internal_call(Method::DELETE, "/internal/v1/organisations/org_1?product=acme", "shop-api", API, None).await;
+        id.internal_call(Method::DELETE, "/internal/v1/organisations/org_1?product=gw", "shop-api", API, None).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (403, Some("wrong_product")));
     let (s, v) = id.internal_call(Method::DELETE, "/internal/v1/organisations/org_1", "shop-api", API, None).await;
     assert_eq!(s, 200, "{v}");
@@ -282,9 +281,8 @@ async fn organisations_and_scopes() {
 
     // Built-in scopes stay.
     put("/internal/v1/organisations/_system", json!({ "system": true })).await;
-    put("/internal/v1/scopes/acme.workspace/_system", json!({ "parent": "organisation:_system", "system": true }))
-        .await;
-    let (s, v) = core(&id, Method::DELETE, "/internal/v1/scopes/acme.workspace/_system", None).await;
+    put("/internal/v1/scopes/gw.workspace/_system", json!({ "parent": "organisation:_system", "system": true })).await;
+    let (s, v) = core(&id, Method::DELETE, "/internal/v1/scopes/gw.workspace/_system", None).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (409, Some("system_scope")));
     let (s, _) = core(&id, Method::DELETE, "/internal/v1/organisations/_system", None).await;
     assert_eq!(s, 409);
@@ -294,18 +292,18 @@ async fn organisations_and_scopes() {
 #[tokio::test]
 async fn the_last_admin_stays_even_when_two_leave_at_once() {
     let id = start().await;
-    with_acme(&id).await;
+    gateway(&id).await;
     let ada = common::account(&id, "ada@example.com").await;
     let bob = common::account(&id, "bob@example.com").await;
-    let a = bind(&id, &ada.id, "acme.org_admin", ScopeRef::organisation("org_1")).await.unwrap().added[0].clone();
-    let b = bind(&id, &bob.id, "acme.org_admin", ScopeRef::organisation("org_1")).await.unwrap().added[0].clone();
+    let a = bind(&id, &ada.id, "gw.org_admin", ScopeRef::organisation("org_1")).await.unwrap().added[0].clone();
+    let b = bind(&id, &bob.id, "gw.org_admin", ScopeRef::organisation("org_1")).await.unwrap().added[0].clone();
     // Unknown scopes and principals are refused.
     assert!(matches!(
-        bind(&id, &ada.id, "acme.viewer", ScopeRef::of("acme.workspace", "ws_9")).await,
+        bind(&id, &ada.id, "gw.viewer", ScopeRef::of("gw.workspace", "ws_9")).await,
         Err(ChangeError::ScopeUnknown(_))
     ));
     assert!(matches!(
-        bind(&id, "usr_nobody", "acme.viewer", ScopeRef::organisation("org_1")).await,
+        bind(&id, "usr_nobody", "gw.viewer", ScopeRef::organisation("org_1")).await,
         Err(ChangeError::PrincipalUnknown(_))
     ));
 
@@ -317,7 +315,7 @@ async fn the_last_admin_stays_even_when_two_leave_at_once() {
         assert!(matches!(if ra.is_ok() { rb } else { ra }, Err(ChangeError::LastHolder(_))));
         // Put the one that went back for the next round.
         let gone = if ok[0] { &ada.id } else { &bob.id };
-        let again = bind(&id, gone, "acme.org_admin", ScopeRef::organisation("org_1")).await.unwrap().added[0].clone();
+        let again = bind(&id, gone, "gw.org_admin", ScopeRef::organisation("org_1")).await.unwrap().added[0].clone();
         if ok[0] {
             id.sql(&format!("UPDATE role_bindings SET id = '{a}' WHERE id = '{again}'")).await;
         } else {
@@ -326,13 +324,13 @@ async fn the_last_admin_stays_even_when_two_leave_at_once() {
     }
     // A platform admin may leave an organisation without one (the manifest's bypass); nobody
     // removes the last platform admin.
-    let root = Subject::user(vec![pacod_id_authz::Binding::new("acme.platform_admin", vec![ScopeRef::platform()])]);
+    let root = Subject::user(vec![pacod_id_authz::Binding::new("gw.platform_admin", vec![ScopeRef::platform()])]);
     unbind(&id, &a, &root).await.unwrap();
     unbind(&id, &b, &root).await.unwrap();
-    let p = bind(&id, &ada.id, "acme.platform_admin", ScopeRef::platform()).await.unwrap().added[0].clone();
+    let p = bind(&id, &ada.id, "gw.platform_admin", ScopeRef::platform()).await.unwrap().added[0].clone();
     assert!(matches!(unbind(&id, &p, &root).await, Err(ChangeError::LastHolder(_))));
     // A disabled holder does not count.
-    bind(&id, &bob.id, "acme.platform_admin", ScopeRef::platform()).await.unwrap();
+    bind(&id, &bob.id, "gw.platform_admin", ScopeRef::platform()).await.unwrap();
     id.sql(&format!("UPDATE accounts SET status = 'disabled' WHERE id = '{}'", bob.id)).await;
     assert!(matches!(unbind(&id, &p, &root).await, Err(ChangeError::LastHolder(_))));
     id.running.stop().await;
@@ -352,7 +350,7 @@ async fn changes(id: &TestId, client: (&str, &str), product: &str, after: i64, w
 #[tokio::test]
 async fn the_snapshot_and_the_changes() {
     let id = start().await;
-    with_acme(&id).await;
+    gateway(&id).await;
     let (s, v) = id
         .internal_call(
             Method::PUT,
@@ -364,7 +362,7 @@ async fn the_snapshot_and_the_changes() {
         .await;
     assert_eq!(s, 200, "{v}");
     let ada = common::account(&id, "ada@example.com").await;
-    bind(&id, &ada.id, "acme.workspace_admin", ScopeRef::of("acme.workspace", "ws_1")).await.unwrap();
+    bind(&id, &ada.id, "gw.workspace_admin", ScopeRef::of("gw.workspace", "ws_1")).await.unwrap();
     bind(&id, &ada.id, "shop.admin", ScopeRef::platform()).await.unwrap();
     bind(&id, &ada.id, "id.auditor", ScopeRef::platform()).await.unwrap();
 
@@ -374,7 +372,7 @@ async fn the_snapshot_and_the_changes() {
         (403, Some("wrong_product")),
         "a product reads its own feed"
     );
-    let (s, snap) = core(&id, Method::GET, "/internal/v1/authz/snapshot?product=acme", None).await;
+    let (s, snap) = core(&id, Method::GET, "/internal/v1/authz/snapshot?product=gw", None).await;
     assert_eq!(s, 200, "{snap}");
     let roles: Vec<(&str, Vec<&str>)> = snap["bindings"]
         .as_array()
@@ -385,7 +383,7 @@ async fn the_snapshot_and_the_changes() {
         })
         .collect();
     assert!(
-        roles.contains(&("acme.workspace_admin", vec!["platform", "organisation:org_1", "acme.workspace:ws_1"])),
+        roles.contains(&("gw.workspace_admin", vec!["platform", "organisation:org_1", "gw.workspace:ws_1"])),
         "{roles:?}"
     );
     assert!(roles.contains(&("id.auditor", vec!["platform"])));
@@ -396,46 +394,46 @@ async fn the_snapshot_and_the_changes() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|s| s["type"] == "acme.workspace" && s["parent"] == "organisation:org_1")
+            .any(|s| s["type"] == "gw.workspace" && s["parent"] == "organisation:org_1")
     );
     let seq = snap["seq"].as_i64().unwrap();
 
     // Nothing new: an immediate answer without wait, the same seq.
-    let (s, v) = changes(&id, ("acme-core", CORE), "acme", seq, 0).await;
+    let (s, v) = changes(&id, ("gw-core", CORE), "gw", seq, 0).await;
     assert_eq!((s, v["seq"].as_i64(), v["events"].as_array().map(Vec::len)), (200, Some(seq), Some(0)));
-    // A change for shop only moves the cursor; then acme's own and a session's come through.
+    // A change for shop only moves the cursor; then gw's own and a session's come through.
     bind(&id, &ada.id, "shop.superuser", ScopeRef::platform()).await.unwrap();
-    let (_, v) = changes(&id, ("acme-core", CORE), "acme", seq, 0).await;
+    let (_, v) = changes(&id, ("gw-core", CORE), "gw", seq, 0).await;
     assert_eq!((v["seq"].as_i64(), v["events"].as_array().map(Vec::len)), (Some(seq + 1), Some(0)));
     let (_, v) = changes(&id, ("shop-api", API), "shop", seq, 0).await;
     assert_eq!(v["events"][0]["role"], "shop.superuser");
 
     let waiting = {
         let id_http = id.http.clone();
-        let url = format!("{}/internal/v1/authz/changes?product=acme&after={}&wait=20", id.internal, seq + 1);
+        let url = format!("{}/internal/v1/authz/changes?product=gw&after={}&wait=20", id.internal, seq + 1);
         tokio::spawn(async move {
             let started = Instant::now();
-            let r = id_http.get(url).basic_auth("acme-core", Some(CORE)).send().await.unwrap();
+            let r = id_http.get(url).basic_auth("gw-core", Some(CORE)).send().await.unwrap();
             (started.elapsed(), r.json::<Value>().await.unwrap())
         })
     };
     tokio::time::sleep(Duration::from_millis(300)).await;
-    bind(&id, &ada.id, "acme.viewer", ScopeRef::organisation("org_1")).await.unwrap();
+    bind(&id, &ada.id, "gw.viewer", ScopeRef::organisation("org_1")).await.unwrap();
     let (took, v) = waiting.await.unwrap();
     assert!(took < Duration::from_secs(2), "the wait ends with the change: {took:?}");
     let e = &v["events"][0];
     assert_eq!(
         (e["kind"].as_str(), e["role"].as_str(), e["principal"].as_str()),
-        (Some("binding.added"), Some("acme.viewer"), Some(ada.id.as_str()))
+        (Some("binding.added"), Some("gw.viewer"), Some(ada.id.as_str()))
     );
     assert_eq!(e["path"], json!(["platform", "organisation:org_1"]));
     assert_eq!(v["seq"], e["seq"]);
 
     // Changes no longer kept: load the snapshot again.
     id.sql("DELETE FROM authz_changes WHERE version <= 3").await;
-    let (s, v) = changes(&id, ("acme-core", CORE), "acme", 1, 0).await;
+    let (s, v) = changes(&id, ("gw-core", CORE), "gw", 1, 0).await;
     assert_eq!((s, v["error"]["details"]["code"].as_str()), (410, Some("cursor_expired")), "{v}");
-    let (s, _) = changes(&id, ("acme-core", CORE), "acme", 1_000_000, 0).await;
+    let (s, _) = changes(&id, ("gw-core", CORE), "gw", 1_000_000, 0).await;
     assert_eq!(s, 410, "a cursor ahead of the head (a restored database) starts over too");
     id.running.stop().await;
 }
@@ -443,12 +441,12 @@ async fn the_snapshot_and_the_changes() {
 #[tokio::test]
 async fn followers_see_every_change_once_in_order_within_a_second() {
     let id = start().await;
-    with_acme(&id).await;
+    gateway(&id).await;
     let mut people = Vec::new();
     for i in 0..40 {
         people.push(common::account(&id, &format!("p{i}@example.com")).await.id);
     }
-    let (_, snap) = core(&id, Method::GET, "/internal/v1/authz/snapshot?product=acme", None).await;
+    let (_, snap) = core(&id, Method::GET, "/internal/v1/authz/snapshot?product=gw", None).await;
     let start_seq = snap["seq"].as_i64().unwrap();
 
     // A follower that long-polls and notes when each change reached it.
@@ -460,8 +458,8 @@ async fn followers_see_every_change_once_in_order_within_a_second() {
             let mut seen: Vec<(i64, String, Instant)> = Vec::new();
             while seen.len() < 40 {
                 let v: Value = http
-                    .get(format!("{base}/internal/v1/authz/changes?product=acme&after={after}&wait=10"))
-                    .basic_auth("acme-core", Some(CORE))
+                    .get(format!("{base}/internal/v1/authz/changes?product=gw&after={after}&wait=10"))
+                    .basic_auth("gw-core", Some(CORE))
                     .send()
                     .await
                     .unwrap()
@@ -486,7 +484,7 @@ async fn followers_see_every_change_once_in_order_within_a_second() {
             pacod_id::store::authz::lock_head(&mut tx).await.unwrap();
             let add = [NewBinding {
                 principal: p.clone(),
-                role: "acme.viewer".into(),
+                role: "gw.viewer".into(),
                 scope: ScopeRef::organisation("org_1"),
                 source: "manual",
                 created_by: "test".into(),
@@ -518,8 +516,8 @@ async fn the_bootstrap_admin() {
     let admin = || pacod_id::bootstrap::BootstrapAdmin {
         email: "Root@Example.com".into(),
         password: Some("a long bootstrap passphrase".into()),
-        roles: vec!["id.admin".into(), "acme.platform_admin".into()],
-        realm: Some("acme".into()),
+        roles: vec!["id.admin".into(), "gw.platform_admin".into()],
+        realm: Some("gateway".into()),
     };
     let id = TestId::start_with(&db, |_| String::new(), |b| b.bootstrap_admin = Some(admin())).await;
     let root = id.store().account_by_email("root@example.com").await.unwrap().expect("made at start");
@@ -532,17 +530,17 @@ async fn the_bootstrap_admin() {
             .unwrap();
     assert_eq!(
         held,
-        [("acme.platform_admin".into(), "bootstrap".into()), ("id.admin".into(), "bootstrap".into())],
-        "the acme role waits for acme"
+        [("gw.platform_admin".into(), "bootstrap".into()), ("id.admin".into(), "bootstrap".into())],
+        "the gw role waits for gw"
     );
-    // The id role counts at once; the acme role once acme's catalogue arrives.
+    // The id role counts at once; the gw role once gw's catalogue arrives.
     let catalog = id.running.state.catalog.get();
     let mut conn = id.store().pool().acquire().await.unwrap();
     let subject = Subject::user(bindings::subject_bindings(&mut conn, &root.id).await.unwrap());
     assert!(catalog.allowed(&subject, "id.accounts.manage", &[ScopeRef::platform()]));
-    id.service_secret("acme-core", CORE).await;
-    core(&id, Method::PUT, "/internal/v1/catalog/acme", Some(json!({ "manifest": manifest("acme") }))).await;
-    assert!(id.running.state.catalog.get().allowed(&subject, "acme.platform.manage", &[ScopeRef::platform()]));
+    id.service_secret("gw-core", CORE).await;
+    core(&id, Method::PUT, "/internal/v1/catalog/gw", Some(json!({ "manifest": manifest("gw") }))).await;
+    assert!(id.running.state.catalog.get().allowed(&subject, "gw.platform.manage", &[ScopeRef::platform()]));
 
     // A second instance, or a restart, makes nothing new.
     let second = TestId::start_with(&db, |_| String::new(), |b| b.bootstrap_admin = Some(admin())).await;
@@ -572,11 +570,11 @@ async fn the_bootstrap_admin() {
 #[tokio::test]
 async fn malformed_requests_answer_in_the_apis_shape() {
     let id = start().await;
-    with_acme(&id).await;
+    gateway(&id).await;
     for (method, path, body) in [
         (Method::PUT, "/internal/v1/organisations/org_9", Some(json!({ "slug": 7 }))),
         (Method::PUT, "/internal/v1/organisations/org_9", Some(json!({ "surprise": true }))),
-        (Method::GET, "/internal/v1/authz/changes?product=acme", None),
+        (Method::GET, "/internal/v1/authz/changes?product=gw", None),
     ] {
         let (s, v) = core(&id, method, path, body).await;
         assert!((400..500).contains(&s), "{path}: {s}");

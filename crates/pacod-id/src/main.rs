@@ -48,16 +48,16 @@ enum Command {
 
 #[derive(Subcommand)]
 enum ImportCommand {
-    /// Acme's `acme-core identity export`. Prints what it did (or, with --dry-run,
+    /// The gateway's `pacod-gw-core identity export`. Prints what it did (or, with --dry-run,
     /// what it would do) as JSON; refused while there are conflicts.
-    Acme {
+    Gw {
         /// The export file.
         file: String,
         /// Report only: change nothing.
         #[arg(long)]
         dry_run: bool,
-        /// Acme's realm in PID_CONFIG.
-        #[arg(long, default_value = "acme")]
+        /// The gateway's realm in PID_CONFIG.
+        #[arg(long, default_value = "gateway")]
         realm: String,
     },
 }
@@ -182,18 +182,18 @@ async fn main() -> anyhow::Result<()> {
             println!("{secret}");
             eprintln!("the secret of {client}; shown once, store it where the client reads it");
         }
-        Command::Import { command: ImportCommand::Acme { file, dry_run, realm } } => {
+        Command::Import { command: ImportCommand::Gw { file, dry_run, realm } } => {
             anyhow::ensure!(config.realms.contains_key(&realm), "PID_CONFIG has no realm {realm:?}");
             let text = std::fs::read_to_string(&file).with_context(|| format!("reading {file}"))?;
-            let export: pacod_id::import::AcmeExport =
-                serde_json::from_str(&text).with_context(|| format!("{file} is not an acme identity export"))?;
+            let export: pacod_id::import::GwExport =
+                serde_json::from_str(&text).with_context(|| format!("{file} is not a gateway identity export"))?;
             let store = Store::connect(&boot.database_url).await?;
             // Not migrated from here (a dry run least of all): the running service does that.
             anyhow::ensure!(
                 !store.migrations_pending().await?,
                 "the database is not at this version's schema yet: start the service, or run `pacod-id migrate`"
             );
-            match pacod_id::import::acme(&store, &config, &realm, &export, dry_run).await {
+            match pacod_id::import::gw(&store, &config, &realm, &export, dry_run).await {
                 Ok(report) => println!("{}", serde_json::to_string_pretty(&report)?),
                 Err(pacod_id::import::ImportError::Conflicts(report)) => {
                     println!("{}", serde_json::to_string_pretty(&report)?);

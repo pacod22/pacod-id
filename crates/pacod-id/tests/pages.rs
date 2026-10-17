@@ -45,7 +45,7 @@ async fn every_page_route_answers_the_page_with_the_realms_look() {
 
     let (status, h, body) = page(&id, "/account/sessions", &[]).await;
     assert_eq!(status, 200, "a deep link is the page too");
-    assert!(body.starts_with("<!doctype html><html lang=\"en\" data-brand=\"acme\"><head>"), "{body}");
+    assert!(body.starts_with("<!doctype html><html lang=\"en\" data-brand=\"gateway\"><head>"), "{body}");
     let csp = h["content-security-policy"].to_str().unwrap();
     let hash = base64::engine::general_purpose::STANDARD.encode(pacod_id::crypto::sha256(BOOT.as_bytes()));
     for part in [
@@ -68,7 +68,7 @@ async fn every_page_route_answers_the_page_with_the_realms_look() {
     let (_, _, body) = page(&id, "/login", &[("accept-language", "bg"), ("cookie", "pid_lang=de")]).await;
     assert!(body.contains("lang=\"de\""));
     let (_, _, body) = page(&id, "/login", &[("cookie", "pid_lang=xx; pid_theme=dark")]).await;
-    assert!(body.contains("lang=\"en\" data-brand=\"acme\" data-theme=\"dark\""), "{body}");
+    assert!(body.contains("lang=\"en\" data-brand=\"gateway\" data-theme=\"dark\""), "{body}");
     let (_, _, body) = page(&id, "/login", &[("host", &host)]).await;
     assert!(body.contains("data-brand=\"bazaar\""), "Bazaar's own look on its own address");
 
@@ -132,7 +132,7 @@ async fn the_account_pages() {
     let api = |p: &str| format!("{}/ui-api/v1/{p}", id.public);
 
     let a = b.get(&api("realm")).await;
-    assert_eq!((a.json["brand"].as_str(), a.json["google"].as_bool()), (Some("acme"), Some(false)));
+    assert_eq!((a.json["brand"].as_str(), a.json["google"].as_bool()), (Some("gateway"), Some(false)));
     let a = b.get(&api("account")).await;
     assert_eq!(
         (a.json["account"]["email"].as_str(), a.json["session"]["recent"].as_bool()),
@@ -213,17 +213,17 @@ async fn the_account_pages() {
     assert_eq!(b.delete_json(&api("account/sessions/sid_nope")).await.status, 404);
 
     // Roles, named.
-    id.service_secret("acme-core", "a-secret-for-acme-core-0123456789").await;
-    let acme = std::fs::read_to_string(format!("{}/tests/fixtures/acme.yaml", env!("CARGO_MANIFEST_DIR"))).unwrap();
-    let acme = serde_json::to_value(pacod_id_authz::Manifest::from_yaml(&acme).unwrap().source()).unwrap();
+    id.service_secret("gw-core", "a-secret-for-the-gateway-core-0123456789").await;
+    let gw = std::fs::read_to_string(format!("{}/tests/fixtures/gw.yaml", env!("CARGO_MANIFEST_DIR"))).unwrap();
+    let gw = serde_json::to_value(pacod_id_authz::Manifest::from_yaml(&gw).unwrap().source()).unwrap();
     let put = |path: &'static str, body: Value| {
-        id.internal_call(reqwest::Method::PUT, path, "acme-core", "a-secret-for-acme-core-0123456789", Some(body))
+        id.internal_call(reqwest::Method::PUT, path, "gw-core", "a-secret-for-the-gateway-core-0123456789", Some(body))
     };
-    put("/internal/v1/catalog/acme", json!({ "manifest": acme })).await;
+    put("/internal/v1/catalog/gw", json!({ "manifest": gw })).await;
     put("/internal/v1/organisations/org_1", json!({ "slug": "acme", "display_name": "Acme" })).await;
-    put("/internal/v1/scopes/acme.workspace/ws_1", json!({ "parent": "organisation:org_1", "display_name": "Prod" }))
+    put("/internal/v1/scopes/gw.workspace/ws_1", json!({ "parent": "organisation:org_1", "display_name": "Prod" }))
         .await;
-    bind(&id, &ada.id, "acme.workspace_admin", ScopeRef::of("acme.workspace", "ws_1")).await;
+    bind(&id, &ada.id, "gw.workspace_admin", ScopeRef::of("gw.workspace", "ws_1")).await;
     let a = b.get(&api("account/organisations")).await;
     let names: Vec<&str> =
         a.json["roles"][0]["path"].as_array().unwrap().iter().map(|p| p["name"].as_str().unwrap()).collect();
@@ -273,19 +273,19 @@ async fn address_changes_hide_taken_addresses_and_end_with_a_new_password() {
 #[tokio::test]
 async fn the_admin_pages_act_by_cookie_only() {
     let id = TestId::start().await;
-    id.service_secret("acme-core", "a-secret-for-acme-core-0123456789").await;
-    let acme = std::fs::read_to_string(format!("{}/tests/fixtures/acme.yaml", env!("CARGO_MANIFEST_DIR"))).unwrap();
-    let acme = serde_json::to_value(pacod_id_authz::Manifest::from_yaml(&acme).unwrap().source()).unwrap();
+    id.service_secret("gw-core", "a-secret-for-the-gateway-core-0123456789").await;
+    let gw = std::fs::read_to_string(format!("{}/tests/fixtures/gw.yaml", env!("CARGO_MANIFEST_DIR"))).unwrap();
+    let gw = serde_json::to_value(pacod_id_authz::Manifest::from_yaml(&gw).unwrap().source()).unwrap();
     id.internal_call(
         reqwest::Method::PUT,
-        "/internal/v1/catalog/acme",
-        "acme-core",
-        "a-secret-for-acme-core-0123456789",
-        Some(json!({ "manifest": acme })),
+        "/internal/v1/catalog/gw",
+        "gw-core",
+        "a-secret-for-the-gateway-core-0123456789",
+        Some(json!({ "manifest": gw })),
     )
     .await;
     let root = common::account(&id, "root@example.com").await;
-    bind(&id, &root.id, "acme.platform_admin", ScopeRef::platform()).await;
+    bind(&id, &root.id, "gw.platform_admin", ScopeRef::platform()).await;
     let mut b = Browser::new(&id);
     id.sign_in(&mut b, "root@example.com").await;
     let admin = |p: &str| format!("{}/ui-api/v1/admin/{p}", id.public);
@@ -307,7 +307,13 @@ async fn the_admin_pages_act_by_cookie_only() {
     let r = id.http.get(admin("accounts")).bearer_auth(tokens["access_token"].as_str().unwrap()).send().await.unwrap();
     assert_eq!(r.status(), 401);
     let (s, _) = id
-        .internal_call(reqwest::Method::GET, "/admin/v1/audit", "acme-core", "a-secret-for-acme-core-0123456789", None)
+        .internal_call(
+            reqwest::Method::GET,
+            "/admin/v1/audit",
+            "gw-core",
+            "a-secret-for-the-gateway-core-0123456789",
+            None,
+        )
         .await;
     assert_eq!(s, 401, "a service's own credentials are no actor either");
     id.running.stop().await;

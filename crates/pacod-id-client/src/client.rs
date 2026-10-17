@@ -20,9 +20,9 @@ pub struct IdConfig {
     /// The service's client (kind `service` in pacod-id's configuration) and its secret.
     pub client_id: String,
     pub client_secret: String,
-    /// The product (`acme`): the feed and the catalogue are its own.
+    /// The product (`gw`): the feed and the catalogue are its own.
     pub product: String,
-    /// The audience of the access tokens the product takes (`acme`).
+    /// The audience of the access tokens the product takes (`pacod-gw`).
     pub audience: String,
 }
 
@@ -219,7 +219,7 @@ impl IdClient {
         Ok(self.call::<Seq>(reqwest::Method::DELETE, &format!("/internal/v1/organisations/{id}"), None).await?.seq)
     }
 
-    /// Registers a product scope (`acme.workspace`) under its parent (`organisation:<id>`).
+    /// Registers a product scope (`gw.workspace`) under its parent (`organisation:<id>`).
     pub async fn put_scope(
         &self,
         kind: &str,

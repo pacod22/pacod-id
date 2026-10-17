@@ -28,10 +28,10 @@ ISSUER = "http://id.test"
 CONFIG = IdConfig(
     issuers=(ISSUER,),
     internal_url="http://id-internal.test",
-    client_id="acme-tester",
+    client_id="pacod-gw-tester",
     client_secret="a-secret-for-the-tester-0123456789",
-    product="acme",
-    audience="acme",
+    product="gw",
+    audience="pacod-gw",
 )
 
 
@@ -62,7 +62,7 @@ class FakeId:
         claims = {
             "iss": ISSUER,
             "sub": "usr_1",
-            "aud": "acme",
+            "aud": "pacod-gw",
             "iat": now,
             "exp": now + 300,
             "pid_kind": "user",
@@ -200,7 +200,7 @@ async def test_only_access_tokens_for_the_product_count(fake: FakeId, client: Id
 
 async def test_the_copy_follows_the_feed_and_reloads_after_a_gap(fake: FakeId, client: IdClient) -> None:
     fake.snapshot_body["bindings"] = [
-        {"id": "rb_1", "principal": "usr_1", "role": "acme.viewer", "path": ["platform"]}
+        {"id": "rb_1", "principal": "usr_1", "role": "gw.viewer", "path": ["platform"]}
     ]
     fake.changes = [
         {
@@ -211,7 +211,7 @@ async def test_the_copy_follows_the_feed_and_reloads_after_a_gap(fake: FakeId, c
                     "kind": "binding.added",
                     "id": "rb_2",
                     "principal": "usr_1",
-                    "role": "acme.auditor",
+                    "role": "gw.auditor",
                     "path": ["platform"],
                 },
                 {"seq": 7, "kind": "session.revoked", "sid": "sid_9", "sub": "usr_1"},
@@ -227,7 +227,7 @@ async def test_the_copy_follows_the_feed_and_reloads_after_a_gap(fake: FakeId, c
     cache.start()
     assert await cache.wait_for(9, 2)
     assert cache.ready and cache.feed_age is not None
-    assert {b.role for b in cache.bindings_of("usr_1")} == {"acme.viewer", "acme.auditor"}
+    assert {b.role for b in cache.bindings_of("usr_1")} == {"gw.viewer", "gw.auditor"}
     assert cache.sid_revoked("sid_9") and seen == ["binding.added", "session.revoked"]
     # The 410 makes it read the snapshot again.
     for _ in range(40):
@@ -238,8 +238,8 @@ async def test_the_copy_follows_the_feed_and_reloads_after_a_gap(fake: FakeId, c
     await cache.stop()
 
 
-ACME = """
-product: acme
+GW = """
+product: gw
 scope_types:
   workspace: { parent: organisation }
 roles:
@@ -254,12 +254,12 @@ def test_fastapi_dependencies(fake: FakeId) -> None:
     http = httpx.AsyncClient(transport=httpx.MockTransport(fake.handle))
     client = IdClient(CONFIG, http)
     cache = AuthzCache(client)
-    ids = IdDependencies(JwtVerifier(client), cache, Catalog([Manifest.from_yaml(ACME)]))
+    ids = IdDependencies(JwtVerifier(client), cache, Catalog([Manifest.from_yaml(GW)]))
     fake.snapshot_body["bindings"] = [
-        {"id": "rb_1", "principal": "usr_1", "role": "acme.viewer", "path": ["platform"]}
+        {"id": "rb_1", "principal": "usr_1", "role": "gw.viewer", "path": ["platform"]}
     ]
-    reads = ids.require_permission("acme.org.read", lambda request: ("platform", "organisation:o1"))
-    manages = ids.require_permission("acme.org.manage", lambda request: ("platform", "organisation:o1"))
+    reads = ids.require_permission("gw.org.read", lambda request: ("platform", "organisation:o1"))
+    manages = ids.require_permission("gw.org.manage", lambda request: ("platform", "organisation:o1"))
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI):

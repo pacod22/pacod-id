@@ -59,7 +59,7 @@ impl CatalogCell {
     }
 }
 
-/// A path as the feed and the API write it: `["platform", "organisation:o1", "acme.workspace:w1"]`.
+/// A path as the feed and the API write it: `["platform", "organisation:o1", "gw.workspace:w1"]`.
 pub fn path_json(path: &[ScopeRef]) -> serde_json::Value {
     serde_json::Value::Array(path.iter().map(|s| serde_json::Value::String(s.to_string())).collect())
 }

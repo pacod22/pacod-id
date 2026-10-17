@@ -1,4 +1,4 @@
-// Where sessions live: a sealed cookie (stateless; acme console), Redis
+// Where sessions live: a sealed cookie (stateless; the gateway console), Redis
 // (shop web and bazaar web), memory (tests and development).
 
 import type { IdSession } from '@pacod/id-client';

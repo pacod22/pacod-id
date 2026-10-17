@@ -155,7 +155,7 @@ pub async fn delete_organisation(st: &Shared, product: &str, id: &str) -> Result
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScopeInput {
-    /// `organisation:<id>`, or another scope of the product (`acme.workspace:<id>`).
+    /// `organisation:<id>`, or another scope of the product (`gw.workspace:<id>`).
     pub parent: ScopeRef,
     #[serde(default)]
     pub display_name: String,

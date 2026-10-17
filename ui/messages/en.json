@@ -208,7 +208,7 @@
 	"error_not_allowed": "You may not do this.",
 	"error_google_unavailable": "Google sign-in is not available right now.",
 	"error_email_unavailable": "This installation sends no email.",
-	"mail_brand_acme": "Acme Console",
+	"mail_brand_gateway": "pacod-gw",
 	"mail_brand_shop": "Shop",
 	"mail_brand_bazaar": "Bazaar",
 	"mail_footer": "You are receiving this email because it concerns your {brand} account.",

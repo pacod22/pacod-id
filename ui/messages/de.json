@@ -208,7 +208,7 @@
 	"error_not_allowed": "Das dürfen Sie nicht.",
 	"error_google_unavailable": "Die Anmeldung mit Google ist gerade nicht verfügbar.",
 	"error_email_unavailable": "Diese Installation versendet keine E-Mails.",
-	"mail_brand_acme": "Acme Console",
+	"mail_brand_gateway": "pacod-gw",
 	"mail_brand_shop": "Shop",
 	"mail_brand_bazaar": "Basar",
 	"mail_footer": "Sie erhalten diese E-Mail, weil sie Ihr Konto bei {brand} betrifft.",

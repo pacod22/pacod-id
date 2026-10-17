@@ -6,7 +6,7 @@ export default {
 		adapter: adapter(),
 		// pacod-id's back-channel logout is a form post with its issuer as the Origin.
 		csrf: {
-			trustedOrigins: [new URL(process.env.ID_ISSUER ?? 'http://id.acme.e2e.test:27370').origin]
+			trustedOrigins: [new URL(process.env.ID_ISSUER ?? 'http://id.gateway.e2e.test:27370').origin]
 		}
 	}
 };

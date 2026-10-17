@@ -98,8 +98,8 @@ async fn signing_up_confirming_and_signing_in() {
     // Waiting for the link; the link works on its own realm's address only, and once.
     let resume = format!("{}/ui-api/v1/flows/{flow}/resume", b.origin);
     assert_eq!(b.post(&resume, json!({})).await.json["next"], "verify_email");
-    let mut acme = Browser::new(&id);
-    let a = acme.post(&format!("{}/ui-api/v1/verification/confirm", id.public), json!({ "token": token })).await;
+    let mut gateway = Browser::new(&id);
+    let a = gateway.post(&format!("{}/ui-api/v1/verification/confirm", id.public), json!({ "token": token })).await;
     assert_eq!(a.status, 410);
     let confirm = format!("{}/ui-api/v1/verification/confirm", b.origin);
     let a = b.post(&confirm, json!({ "token": token })).await;
@@ -229,7 +229,7 @@ async fn resetting_a_password() {
             json!({ "token": token, "password": "a new long passphrase" }),
         )
         .await;
-    assert_eq!(a.status, 410, "an acme link is not taken on bazaar's address");
+    assert_eq!(a.status, 410, "a gateway link is not taken on bazaar's address");
     let a = b.post(&confirm, json!({ "token": token, "password": "a new long passphrase" })).await;
     assert_eq!((a.status, a.json["next"].as_str()), (200, Some("sign_in")), "{a:?}");
     assert_eq!(b.post(&confirm, json!({ "token": token, "password": "yet another passphrase" })).await.status, 410);

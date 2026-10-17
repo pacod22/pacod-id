@@ -1,6 +1,6 @@
 //! Who calls the admin API: the subject of a token a product's service exchanged
 //! for pacod-id (`aud` pacod-id, `act.sub` the service). A person acts with their own bindings, a
-//! service account (a script with a `pidt_` or `acma_` token, through the product) with its own.
+//! service account (a script with a `pidt_` or `pgwa_` token, through the product) with its own.
 //! The product's service itself gains nothing: a client-credentials token is no actor.
 //!
 //! The hosted admin pages (`/ui-api/v1/admin/*`) act as the signed-in person, by
@@ -208,7 +208,7 @@ impl Actor {
     }
 
     /// The permission that makes someone an administrator of the acting product: its manifest's
-    /// grant default (acme's `acme.members.manage`).
+    /// grant default (the gateway's `gw.members.manage`).
     fn product_admin_permission(&self, catalog: &Catalog) -> Option<String> {
         let product = self.product.as_deref()?;
         Some(catalog.manifest(product)?.grant_default().to_owned())

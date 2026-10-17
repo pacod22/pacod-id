@@ -4,8 +4,9 @@ One place where people and machines sign in, and where it is recorded what they 
 several products at once: an OpenID Connect provider for first-party applications, with accounts,
 organisations, role bindings, and a change feed that products follow to decide access locally.
 
-The documentation and the tests use fictional products: `acme` (organisations that hold workspaces,
-and a console), and `shop`, whose people sign in under two brands, `shop` and `bazaar`.
+The documentation and the tests use the gateway, pacod-gw (product `gw`: organisations that hold
+workspaces, and a console), and a fictional product, `shop`, whose people sign in under two brands,
+`shop` and `bazaar`.
 
 Running it: [docs/runbook.md](docs/runbook.md). Integrating with it: [docs/api.md](docs/api.md). What protects what: [docs/threat-model.md](docs/threat-model.md).
 Latency: [docs/measurements.md](docs/measurements.md). OpenID conformance:

@@ -27,7 +27,7 @@ impl ScopeRef {
         ScopeRef { kind: ORGANISATION.to_owned(), id: Some(id.into()) }
     }
 
-    /// A scope of a product type, e.g. `ScopeRef::of("acme.workspace", "ws_1")`.
+    /// A scope of a product type, e.g. `ScopeRef::of("gw.workspace", "ws_1")`.
     pub fn of(kind: impl Into<String>, id: impl Into<String>) -> Self {
         ScopeRef { kind: kind.into(), id: Some(id.into()) }
     }

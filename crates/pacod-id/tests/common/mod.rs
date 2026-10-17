@@ -52,10 +52,10 @@ pub fn config_for(port: u16) -> String {
     format!(
         r#"
 [[realm]]
-name = "acme"
+name = "gateway"
 issuer = "http://127.0.0.1:{port}"
-brand = "acme"
-accounts_managed_by = ["acme.platform_admin"]
+brand = "gateway"
+accounts_managed_by = ["gw.platform_admin"]
 
 [[realm]]
 name = "bazaar"
@@ -66,12 +66,12 @@ self_signup = true
 
 [[client]]
 id = "console"
-realm = "acme"
+realm = "gateway"
 kind = "confidential"
 secret_env = "CONSOLE_SECRET"
 redirect_uris = ["http://127.0.0.1:13000/auth/callback"]
 post_logout_redirect_uris = ["http://127.0.0.1:13000/"]
-audience = "acme"
+audience = "pacod-gw"
 
 [[client]]
 id = "bazaar-android"
@@ -81,11 +81,11 @@ redirect_uris = ["https://bazaar.example/native/oidc/callback"]
 audience = "shop-api"
 
 [[client]]
-id = "acme-core"
-realm = "acme"
+id = "gw-core"
+realm = "gateway"
 kind = "service"
-product = "acme"
-audience = "acme"
+product = "gw"
+audience = "pacod-gw"
 "#
     )
 }
@@ -306,7 +306,7 @@ pub async fn account_with(id: &TestId, email: &str, password: &str, verified: bo
             display_name: "Ada Lovelace".into(),
             password_hash: Some(hash),
             verified_by: verified.then(|| "admin".to_owned()),
-            signup_realm: "acme".into(),
+            signup_realm: "gateway".into(),
             ..Default::default()
         })
         .await

@@ -2,17 +2,17 @@
 //!
 //! ```toml
 //! [[realm]]
-//! name = "acme"
+//! name = "gateway"
 //! issuer = "https://id.example.com"
-//! brand = "acme"
+//! brand = "gateway"
 //!
 //! [[client]]
-//! id = "acme-console"
-//! realm = "acme"
+//! id = "pacod-gw-console"
+//! realm = "gateway"
 //! kind = "confidential"
-//! secret_env = "ACME_CONSOLE_SECRET"
+//! secret_env = "PGW_UI_CLIENT_SECRET"
 //! redirect_uris = ["https://console.example.com/auth/callback"]
-//! audience = "acme"
+//! audience = "pacod-gw"
 //! ```
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,7 +22,7 @@ use serde::Deserialize;
 use url::Url;
 
 /// The built-in brands; they choose the hosted UI's theme and the mail layout.
-pub const BRANDS: [&str; 3] = ["acme", "shop", "bazaar"];
+pub const BRANDS: [&str; 3] = ["gateway", "shop", "bazaar"];
 /// The hosted UI's languages.
 pub const LOCALES: [&str; 4] = ["en", "bg", "de", "ru"];
 
@@ -98,7 +98,7 @@ pub struct Realm {
     #[serde(default = "seven")]
     pub invitation_days: u32,
     /// Roles that let their holders create, disable and reset accounts in this realm (in the
-    /// examples, acme.platform_admin in the acme realm).
+    /// gateway realm: gw.platform_admin).
     #[serde(default)]
     pub accounts_managed_by: Vec<String>,
     #[serde(default)]
@@ -272,7 +272,7 @@ pub fn authority(u: &Url) -> String {
 
 /// Puts the environment's values in for `${NAME}` (a name of letters, digits and `_`), so that one
 /// file serves installations that differ only in their host names (a compose stack's
-/// `issuer = "https://${ACME_ID_HOST}"`). `$${` stands for a literal `${`. A name that is not set,
+/// `issuer = "https://${PGW_ID_HOST}"`). `$${` stands for a literal `${`. A name that is not set,
 /// or set empty, is an error that names it. Comment lines are left as they are.
 pub fn expand_env(text: &str, var: impl Fn(&str) -> Option<String>) -> anyhow::Result<String> {
     let mut out = String::with_capacity(text.len());
@@ -385,7 +385,7 @@ impl Config {
             match c.kind {
                 ClientKind::Confidential | ClientKind::Public => {
                     if c.audience.as_deref().is_none_or(|a| !ident(a)) {
-                        return Err(format!("client {}: an audience (the product, e.g. acme) is required", c.id));
+                        return Err(format!("client {}: an audience (the product, e.g. pacod-gw) is required", c.id));
                     }
                     if grants.contains(&Grant::AuthorizationCode) && c.redirect_uris.is_empty() {
                         return Err(format!("client {}: needs at least one redirect URI", c.id));
@@ -411,7 +411,7 @@ impl Config {
                     if grants.contains(&Grant::TokenExchange) && c.audience.as_deref().is_none_or(|a| !ident(a)) {
                         return Err(format!(
                             "client {}: a service client that exchanges tokens names the audience of its \
-                             product's tokens (e.g. acme)",
+                             product's tokens (e.g. pacod-gw)",
                             c.id
                         ));
                     }
@@ -475,10 +475,10 @@ mod tests {
 
     const SAMPLE: &str = r#"
 [[realm]]
-name = "acme"
+name = "gateway"
 issuer = "http://127.0.0.1:13070"
-brand = "acme"
-accounts_managed_by = ["acme.platform_admin"]
+brand = "gateway"
+accounts_managed_by = ["gw.platform_admin"]
 
 [[realm]]
 name = "bazaar"
@@ -488,33 +488,33 @@ password_min_length = 8
 self_signup = true
 
 [[client]]
-id = "acme-console"
-realm = "acme"
+id = "pacod-gw-console"
+realm = "gateway"
 kind = "confidential"
-secret_env = "ACME_CONSOLE_SECRET"
+secret_env = "PGW_UI_CLIENT_SECRET"
 redirect_uris = ["http://127.0.0.1:13000/auth/callback"]
-audience = "acme"
+audience = "pacod-gw"
 
 [[client]]
-id = "acme-core"
-realm = "acme"
+id = "pacod-gw-core"
+realm = "gateway"
 kind = "service"
-product = "acme"
-audience = "acme"
+product = "gw"
+audience = "pacod-gw"
 "#;
 
     #[test]
     fn a_sample_reads() {
         let c = Config::from_toml(SAMPLE).unwrap();
-        let g = &c.realms["acme"];
+        let g = &c.realms["gateway"];
         assert_eq!((g.remember_me_days, g.session_hours, g.password_min_length), (7, 12, 12));
         assert_eq!(g.mail_locales, ["bg", "en"]);
         assert_eq!(c.realms["bazaar"].password_min_length, 8);
-        assert_eq!(c.realm_for_host("127.0.0.1:13070").unwrap().name, "acme");
+        assert_eq!(c.realm_for_host("127.0.0.1:13070").unwrap().name, "gateway");
         assert_eq!(c.realm_for_host("ID.BAZAAR.EXAMPLE").unwrap().name, "bazaar");
         assert!(c.realm_for_host("127.0.0.1:13000").is_none());
-        assert_eq!(c.clients["acme-core"].grants(), [Grant::ClientCredentials, Grant::TokenExchange].into());
-        assert_eq!(c.clients["acme-console"].access_ttl_seconds, 300);
+        assert_eq!(c.clients["pacod-gw-core"].grants(), [Grant::ClientCredentials, Grant::TokenExchange].into());
+        assert_eq!(c.clients["pacod-gw-console"].access_ttl_seconds, 300);
     }
 
     #[test]
@@ -525,12 +525,12 @@ audience = "acme"
                 "realm bazaar",
             ),
             (SAMPLE.replace("brand = \"bazaar\"", "brand = \"nope\""), "brand"),
-            (SAMPLE.replace("audience = \"acme\"", ""), "audience"),
-            (SAMPLE.replace("product = \"acme\"", "product = \"A C\""), "product is a short name"),
-            (SAMPLE.replace("product = \"acme\"\naudience = \"acme\"", "product = \"acme\""), "exchanges tokens"),
+            (SAMPLE.replace("audience = \"pacod-gw\"", ""), "audience"),
+            (SAMPLE.replace("product = \"gw\"", "product = \"G W\""), "product is a short name"),
+            (SAMPLE.replace("product = \"gw\"\naudience = \"pacod-gw\"", "product = \"gw\""), "exchanges tokens"),
             (SAMPLE.replace("password_min_length = 8", "password_min_length = 3"), "password minimums"),
             (
-                SAMPLE.replace("realm = \"acme\"\nkind = \"service\"", "realm = \"nope\"\nkind = \"service\""),
+                SAMPLE.replace("realm = \"gateway\"\nkind = \"service\"", "realm = \"nope\"\nkind = \"service\""),
                 "unknown realm",
             ),
             (

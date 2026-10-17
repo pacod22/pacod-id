@@ -6,7 +6,7 @@ const origin = env.APP_ORIGIN ?? 'http://kit3.e2e.test:27392';
 const secret = env.APP_SESSION_SECRET ?? 'a-fixture-session-secret-of-32-chars';
 
 export const handle = createIdHandle({
-	issuer: env.ID_ISSUER ?? 'http://id.acme.e2e.test:27370',
+	issuer: env.ID_ISSUER ?? 'http://id.gateway.e2e.test:27370',
 	internalUrl: env.ID_INTERNAL_URL,
 	clientId: env.ID_CLIENT_ID ?? 'demo-kit3',
 	clientSecret: env.ID_CLIENT_SECRET,

@@ -61,7 +61,7 @@ impl From<ChangeError> for ApiError {
     }
 }
 
-/// A scope written as `platform`, `organisation:o1` or `acme.workspace:w1`.
+/// A scope written as `platform`, `organisation:o1` or `gw.workspace:w1`.
 pub fn parse_scope(s: &str) -> ApiResult<ScopeRef> {
     s.parse()
         .map_err(|_| ApiError::invalid(format!("{s:?} is not a scope")).with_details(json!({ "code": "bad_scope" })))

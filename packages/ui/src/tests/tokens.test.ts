@@ -29,8 +29,8 @@ describe('tokens.css', () => {
 		expect(bazaar).toContain('--pid-accent: light-dark(#a2542a, #c67139);');
 		expect(bazaar).toContain("--pid-font-display: 'Caprasimo', Georgia, serif;");
 		expect(bazaar).toContain('--pid-focus-ring:');
-		// Acme and Shop share the base look: no block of their own.
-		expect(css).not.toContain("data-brand='acme'");
+		// The gateway and Shop share the base look: no block of their own.
+		expect(css).not.toContain("data-brand='gateway'");
 		expect(css).not.toContain("data-brand='shop'");
 	});
 

@@ -1,4 +1,4 @@
-//! Stage 6: the admin API, as acme's facades will call it, and the hosted invitation pages.
+//! Stage 6: the admin API, as the gateway's facades will call it, and the hosted invitation pages.
 
 mod common;
 
@@ -8,24 +8,24 @@ use pacod_id_authz::{Manifest, ScopeRef};
 use reqwest::Method;
 use serde_json::{Value, json};
 
-const CORE: &str = "a-secret-for-acme-core-0123456789";
+const CORE: &str = "a-secret-for-the-gateway-core-0123456789";
 
 fn manifest(name: &str) -> Value {
     let text = std::fs::read_to_string(format!("{}/tests/fixtures/{name}.yaml", env!("CARGO_MANIFEST_DIR"))).unwrap();
     serde_json::to_value(Manifest::from_yaml(&text).unwrap().source()).unwrap()
 }
 
-/// pacod-id with acme's catalogue, organisations org_1 (workspaces ws_1, ws_2) and org_2.
+/// pacod-id with gw's catalogue, organisations org_1 (workspaces ws_1, ws_2) and org_2.
 async fn world() -> TestId {
     let id = TestId::start().await;
-    id.service_secret("acme-core", CORE).await;
-    let put = |path: &'static str, body: Value| id.internal_call(Method::PUT, path, "acme-core", CORE, Some(body));
-    assert_eq!(put("/internal/v1/catalog/acme", json!({ "manifest": manifest("acme") })).await.0, 200);
+    id.service_secret("gw-core", CORE).await;
+    let put = |path: &'static str, body: Value| id.internal_call(Method::PUT, path, "gw-core", CORE, Some(body));
+    assert_eq!(put("/internal/v1/catalog/gw", json!({ "manifest": manifest("gw") })).await.0, 200);
     put("/internal/v1/organisations/org_1", json!({ "slug": "acme", "display_name": "Acme" })).await;
     put("/internal/v1/organisations/org_2", json!({ "slug": "other", "display_name": "Other" })).await;
-    put("/internal/v1/scopes/acme.workspace/ws_1", json!({ "parent": "organisation:org_1", "display_name": "Prod" }))
+    put("/internal/v1/scopes/gw.workspace/ws_1", json!({ "parent": "organisation:org_1", "display_name": "Prod" }))
         .await;
-    put("/internal/v1/scopes/acme.workspace/ws_2", json!({ "parent": "organisation:org_1", "display_name": "Test" }))
+    put("/internal/v1/scopes/gw.workspace/ws_2", json!({ "parent": "organisation:org_1", "display_name": "Test" }))
         .await;
     id
 }
@@ -50,12 +50,12 @@ async fn person(id: &TestId, email: &str, role: &str, scope: ScopeRef) -> String
     a.id
 }
 
-/// What acme's core does for a facade: swaps its caller's token for one for pacod-id.
+/// What the gateway's core does for a facade: swaps its caller's token for one for pacod-id.
 async fn exchange(id: &TestId, subject: &str) -> String {
     let r = id
         .http
         .post(format!("{}/oidc/token", id.internal))
-        .basic_auth("acme-core", Some(CORE))
+        .basic_auth("gw-core", Some(CORE))
         .form(&[
             ("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange"),
             ("subject_token", subject),
@@ -93,7 +93,7 @@ fn code(v: &Value) -> Option<&str> {
 #[tokio::test]
 async fn the_admin_api_takes_exchanged_tokens_only() {
     let id = world().await;
-    person(&id, "ada@example.com", "acme.org_admin", ScopeRef::organisation("org_1")).await;
+    person(&id, "ada@example.com", "gw.org_admin", ScopeRef::organisation("org_1")).await;
     let mut b = Browser::new(&id);
     let (c, v) = id.sign_in(&mut b, "ada@example.com").await;
     let (_, tokens) = id.redeem(&c, &v).await;
@@ -101,7 +101,7 @@ async fn the_admin_api_takes_exchanged_tokens_only() {
     let r = id
         .http
         .post(format!("{}/oidc/token", id.internal))
-        .basic_auth("acme-core", Some(CORE))
+        .basic_auth("gw-core", Some(CORE))
         .form(&[("grant_type", "client_credentials")])
         .send()
         .await
@@ -114,7 +114,7 @@ async fn the_admin_api_takes_exchanged_tokens_only() {
     let facade = exchange(&id, own).await;
     let (s, v) = call(&id, &facade, Method::GET, "/admin/v1/bindings", None).await;
     assert_eq!(s, 200, "{v}");
-    assert_eq!(v["bindings"][0]["role"], "acme.org_admin");
+    assert_eq!(v["bindings"][0]["role"], "gw.org_admin");
     assert_eq!(v["bindings"][0]["path"], json!(["platform", "organisation:org_1"]));
     let r = id.http.get(format!("{}/admin/v1/bindings", id.public)).bearer_auth(&facade).send().await.unwrap();
     assert_eq!(r.status(), 404, "internal only");
@@ -130,12 +130,12 @@ async fn common_id(id: &TestId, email: &str) -> String {
 }
 
 #[tokio::test]
-async fn members_follow_acmes_rules() {
+async fn members_follow_the_gateways_rules() {
     let id = world().await;
-    let root = person(&id, "root@example.com", "acme.platform_admin", ScopeRef::platform()).await;
-    let ada = person(&id, "ada@example.com", "acme.org_admin", ScopeRef::organisation("org_1")).await;
+    let root = person(&id, "root@example.com", "gw.platform_admin", ScopeRef::platform()).await;
+    let ada = person(&id, "ada@example.com", "gw.org_admin", ScopeRef::organisation("org_1")).await;
     let bob = person(&id, "bob@example.com", "", ScopeRef::platform()).await;
-    person(&id, "carol@example.com", "acme.workspace_admin", ScopeRef::of("acme.workspace", "ws_1")).await;
+    person(&id, "carol@example.com", "gw.workspace_admin", ScopeRef::of("gw.workspace", "ws_1")).await;
     let (ada_t, _) = as_person(&id, "ada@example.com").await;
     let (carol_t, _) = as_person(&id, "carol@example.com").await;
     let (root_t, _) = as_person(&id, "root@example.com").await;
@@ -145,28 +145,25 @@ async fn members_follow_acmes_rules() {
         let id = &id;
         async move { call(id, &t, Method::PUT, &path, Some(json!({ "role": role }))).await }
     };
-    let (s, v) = put(&ada_t, &format!("/admin/v1/scopes/organisation/org_1/members/{bob}"), json!("acme.viewer")).await;
+    let (s, v) = put(&ada_t, &format!("/admin/v1/scopes/organisation/org_1/members/{bob}"), json!("gw.viewer")).await;
     assert_eq!(s, 200, "{v}");
     assert!(v["seq"].as_i64().is_some(), "writes answer with the feed's seq");
-    let (s, v) =
-        put(&ada_t, &format!("/admin/v1/scopes/organisation/org_1/members/{bob}"), json!("acme.auditor")).await;
+    let (s, v) = put(&ada_t, &format!("/admin/v1/scopes/organisation/org_1/members/{bob}"), json!("gw.auditor")).await;
     assert_eq!(s, 200, "{v}");
-    // Workspace admins do not manage members (acme's rule); nobody gives platform roles here.
-    let (s, v) =
-        put(&carol_t, &format!("/admin/v1/scopes/acme.workspace/ws_1/members/{bob}"), json!("acme.viewer")).await;
+    // Workspace admins do not manage members (the gateway's rule); nobody gives platform roles here.
+    let (s, v) = put(&carol_t, &format!("/admin/v1/scopes/gw.workspace/ws_1/members/{bob}"), json!("gw.viewer")).await;
     assert_eq!((s, code(&v)), (403, Some("not_allowed")));
     // Nor does the "nothing to change" answer tell them who holds what.
     let (s, v) =
-        put(&carol_t, &format!("/admin/v1/scopes/organisation/org_1/members/{bob}"), json!("acme.auditor")).await;
+        put(&carol_t, &format!("/admin/v1/scopes/organisation/org_1/members/{bob}"), json!("gw.auditor")).await;
     assert_eq!((s, code(&v)), (403, Some("not_allowed")), "bob is an auditor there, but carol may not know");
     let (s, v) =
-        put(&ada_t, &format!("/admin/v1/scopes/organisation/org_1/members/{bob}"), json!("acme.platform_admin")).await;
+        put(&ada_t, &format!("/admin/v1/scopes/organisation/org_1/members/{bob}"), json!("gw.platform_admin")).await;
     assert_eq!((s, code(&v)), (422, Some("scope_type_not_allowed")));
-    let (s, v) = put(&ada_t, &format!("/admin/v1/scopes/organisation/org_2/members/{bob}"), json!("acme.viewer")).await;
+    let (s, v) = put(&ada_t, &format!("/admin/v1/scopes/organisation/org_2/members/{bob}"), json!("gw.viewer")).await;
     assert_eq!((s, code(&v)), (403, Some("not_allowed")), "another organisation");
     let (s, v) =
-        put(&ada_t, &format!("/admin/v1/scopes/acme.workspace/ws_1/members/{bob}"), json!("acme.workspace_admin"))
-            .await;
+        put(&ada_t, &format!("/admin/v1/scopes/gw.workspace/ws_1/members/{bob}"), json!("gw.workspace_admin")).await;
     assert_eq!(s, 200, "{v}");
 
     // The members of the organisation, and of a workspace with the organisation's roles inherited.
@@ -192,12 +189,12 @@ async fn members_follow_acmes_rules() {
     bobs.sort();
     assert_eq!(
         bobs,
-        [("acme.auditor".to_owned(), false), ("acme.workspace_admin".to_owned(), false)],
+        [("gw.auditor".to_owned(), false), ("gw.workspace_admin".to_owned(), false)],
         "auditor replaced viewer"
     );
     assert!(!v["members"].as_array().unwrap().iter().any(|m| m["principal"] == root), "platform roles are not members");
-    let (_, v) = call(&id, &carol_t, Method::GET, "/admin/v1/scopes/acme.workspace/ws_1/members", None).await;
-    assert!(roles_of(&v, &ada).contains(&("acme.org_admin".to_owned(), true)), "{v}");
+    let (_, v) = call(&id, &carol_t, Method::GET, "/admin/v1/scopes/gw.workspace/ws_1/members", None).await;
+    assert!(roles_of(&v, &ada).contains(&("gw.org_admin".to_owned(), true)), "{v}");
     let (s, _) = call(&id, &carol_t, Method::GET, "/admin/v1/scopes/organisation/org_1/members", None).await;
     assert_eq!(s, 403, "a workspace role does not see the organisation's members");
 
@@ -221,7 +218,7 @@ async fn members_follow_acmes_rules() {
     .await;
     assert_eq!(s, 200);
     let (_, v) = call(&id, &ada_t, Method::GET, "/admin/v1/scopes/organisation/org_1/members", None).await;
-    assert_eq!(roles_of(&v, &bob), [("acme.workspace_admin".to_owned(), false)]);
+    assert_eq!(roles_of(&v, &bob), [("gw.workspace_admin".to_owned(), false)]);
     let (s, _) =
         call(&id, &ada_t, Method::DELETE, &format!("/admin/v1/scopes/organisation/org_1/members/{bob}"), None).await;
     assert_eq!(s, 200);
@@ -230,9 +227,9 @@ async fn members_follow_acmes_rules() {
     assert_eq!((s, code(&v)), (404, Some("not_a_member")));
 
     // Additive bindings; the same one twice is refused.
-    let body = json!({ "principal": bob, "role": "acme.viewer", "scope": "acme.workspace:ws_2" });
+    let body = json!({ "principal": bob, "role": "gw.viewer", "scope": "gw.workspace:ws_2" });
     let (s, v) = call(&id, &ada_t, Method::POST, "/admin/v1/bindings", Some(body.clone())).await;
-    assert_eq!((s, v["path"].clone()), (201, json!(["platform", "organisation:org_1", "acme.workspace:ws_2"])), "{v}");
+    assert_eq!((s, v["path"].clone()), (201, json!(["platform", "organisation:org_1", "gw.workspace:ws_2"])), "{v}");
     let (s, v) = call(&id, &ada_t, Method::POST, "/admin/v1/bindings", Some(body)).await;
     assert_eq!((s, code(&v)), (409, Some("binding_exists")));
     let (s, v) = call(
@@ -240,7 +237,7 @@ async fn members_follow_acmes_rules() {
         &ada_t,
         Method::POST,
         "/admin/v1/bindings",
-        Some(json!({ "principal": bob, "role": "acme.viewer", "scope": "acme.workspace:ws_9" })),
+        Some(json!({ "principal": bob, "role": "gw.viewer", "scope": "gw.workspace:ws_9" })),
     )
     .await;
     assert_eq!((s, code(&v)), (409, Some("scope_unknown")));
@@ -249,7 +246,7 @@ async fn members_follow_acmes_rules() {
         &ada_t,
         Method::POST,
         "/admin/v1/bindings",
-        Some(json!({ "principal": "usr_nobody", "role": "acme.viewer", "scope": "organisation:org_1" })),
+        Some(json!({ "principal": "usr_nobody", "role": "gw.viewer", "scope": "organisation:org_1" })),
     )
     .await;
     assert_eq!((s, code(&v)), (404, Some("principal_unknown")));
@@ -263,9 +260,9 @@ async fn members_follow_acmes_rules() {
 #[tokio::test]
 async fn accounts_under_the_realm_policy() {
     let id = world().await;
-    let root = person(&id, "root@example.com", "acme.platform_admin", ScopeRef::platform()).await;
-    person(&id, "viewer@example.com", "acme.viewer", ScopeRef::organisation("org_1")).await;
-    // A Bazaar sign-up: not acme's to manage.
+    let root = person(&id, "root@example.com", "gw.platform_admin", ScopeRef::platform()).await;
+    person(&id, "viewer@example.com", "gw.viewer", ScopeRef::organisation("org_1")).await;
+    // A Bazaar sign-up: not the gateway's to manage.
     let nia = common::account_with(&id, "nia@example.com", common::PASSWORD, true).await;
     id.sql(&format!("UPDATE accounts SET signup_realm = 'bazaar' WHERE id = '{}'", nia.id)).await;
     let (root_t, _) = as_person(&id, "root@example.com").await;
@@ -307,7 +304,7 @@ async fn accounts_under_the_realm_policy() {
     .await;
     assert_eq!(
         (s, v["email"].as_str(), v["email_verified"].as_bool(), v["signup_realm"].as_str()),
-        (201, Some("eve@example.com"), Some(false), Some("acme")),
+        (201, Some("eve@example.com"), Some(false), Some("gateway")),
         "{v}"
     );
     let eve = v["id"].as_str().unwrap().to_owned();
@@ -403,8 +400,8 @@ async fn accounts_under_the_realm_policy() {
 #[tokio::test]
 async fn service_accounts_and_their_tokens() {
     let id = world().await;
-    person(&id, "root@example.com", "acme.platform_admin", ScopeRef::platform()).await;
-    person(&id, "ada@example.com", "acme.org_admin", ScopeRef::organisation("org_1")).await;
+    person(&id, "root@example.com", "gw.platform_admin", ScopeRef::platform()).await;
+    person(&id, "ada@example.com", "gw.org_admin", ScopeRef::organisation("org_1")).await;
     let (root_t, _) = as_person(&id, "root@example.com").await;
     let (ada_t, _) = as_person(&id, "ada@example.com").await;
 
@@ -441,13 +438,13 @@ async fn service_accounts_and_their_tokens() {
     let (_, v) = call(&id, &root_t, Method::GET, &format!("/admin/v1/service-accounts/{svc}/tokens"), None).await;
     assert!(!v.to_string().contains(&secret), "listed without the secret");
 
-    // A script with the token acts through acme with its own bindings.
+    // A script with the token acts through the gateway with its own bindings.
     let (s, _) = call(
         &id,
         &root_t,
         Method::POST,
         "/admin/v1/bindings",
-        Some(json!({ "principal": svc, "role": "acme.viewer", "scope": "organisation:org_1" })),
+        Some(json!({ "principal": svc, "role": "gw.viewer", "scope": "organisation:org_1" })),
     )
     .await;
     assert_eq!(s, 201);
@@ -463,7 +460,7 @@ async fn service_accounts_and_their_tokens() {
     let r = id
         .http
         .post(format!("{}/internal/v1/introspect", id.internal))
-        .basic_auth("acme-core", Some(CORE))
+        .basic_auth("gw-core", Some(CORE))
         .form(&[("token", &secret)])
         .send()
         .await
@@ -475,7 +472,7 @@ async fn service_accounts_and_their_tokens() {
     let own: Value = id
         .http
         .post(format!("{}/oidc/token", id.internal))
-        .basic_auth("acme-core", Some(CORE))
+        .basic_auth("gw-core", Some(CORE))
         .form(&[("grant_type", "client_credentials")])
         .send()
         .await
@@ -486,7 +483,7 @@ async fn service_accounts_and_their_tokens() {
     let r = id
         .http
         .post(format!("{}/internal/v1/introspect", id.internal))
-        .basic_auth("acme-core", Some(CORE))
+        .basic_auth("gw-core", Some(CORE))
         .form(&[("token", own["access_token"].as_str().unwrap())])
         .send()
         .await
@@ -496,7 +493,7 @@ async fn service_accounts_and_their_tokens() {
     let r = id
         .http
         .post(format!("{}/internal/v1/introspect", id.internal))
-        .basic_auth("acme-core", Some(CORE))
+        .basic_auth("gw-core", Some(CORE))
         .form(&[("token", &bot_t)])
         .send()
         .await
@@ -521,9 +518,9 @@ fn link_token(text: &str) -> String {
 #[tokio::test]
 async fn invitations_from_sending_to_accepting() {
     let id = world().await;
-    person(&id, "ada@example.com", "acme.org_admin", ScopeRef::organisation("org_1")).await;
-    let bob = person(&id, "bob@example.com", "acme.viewer", ScopeRef::organisation("org_1")).await;
-    person(&id, "carol@example.com", "acme.workspace_admin", ScopeRef::of("acme.workspace", "ws_1")).await;
+    person(&id, "ada@example.com", "gw.org_admin", ScopeRef::organisation("org_1")).await;
+    let bob = person(&id, "bob@example.com", "gw.viewer", ScopeRef::organisation("org_1")).await;
+    person(&id, "carol@example.com", "gw.workspace_admin", ScopeRef::of("gw.workspace", "ws_1")).await;
     let (ada_t, _) = as_person(&id, "ada@example.com").await;
     let (carol_t, _) = as_person(&id, "carol@example.com").await;
     let invite = |t: &str, body: Value| {
@@ -533,15 +530,15 @@ async fn invitations_from_sending_to_accepting() {
     };
 
     let (s, v) =
-        invite(&carol_t, json!({ "email": "nia@example.com", "role": "acme.viewer", "scope": "acme.workspace:ws_1" }))
+        invite(&carol_t, json!({ "email": "nia@example.com", "role": "gw.viewer", "scope": "gw.workspace:ws_1" }))
             .await;
     assert_eq!(s, 403, "workspace admins do not invite: {v}");
-    let (s, v) = invite(&ada_t, json!({ "email": "Nia@Example.com", "role": "acme.viewer", "scope": "organisation:org_1", "labels": { "role": "Viewer" } })).await;
+    let (s, v) = invite(&ada_t, json!({ "email": "Nia@Example.com", "role": "gw.viewer", "scope": "organisation:org_1", "labels": { "role": "Viewer" } })).await;
     assert_eq!((s, v["emailed"].as_bool(), v.get("token").is_none()), (201, Some(true), true), "{v}");
     let first = link_token(&id.mail().await[0].mail.text);
     // The same address and scope again: one invitation, a new link, the old one dead.
     let (s, v) =
-        invite(&ada_t, json!({ "email": "nia@example.com", "role": "acme.auditor", "scope": "organisation:org_1" }))
+        invite(&ada_t, json!({ "email": "nia@example.com", "role": "gw.auditor", "scope": "organisation:org_1" }))
             .await;
     assert_eq!(s, 201, "{v}");
     let sent = id.mail().await;
@@ -565,7 +562,7 @@ async fn invitations_from_sending_to_accepting() {
             a.json["account_exists"].as_bool(),
             a.json["inviter_name"].as_str()
         ),
-        (Some("nia@example.com"), Some("acme.auditor"), Some("Acme"), Some(false), Some("Ada Lovelace"))
+        (Some("nia@example.com"), Some("gw.auditor"), Some("Acme"), Some(false), Some("Ada Lovelace"))
     );
     let accept = format!("{}/ui-api/v1/invitations/accept", id.public);
     let a = b.post(&accept, json!({ "token": token, "password": "ninechars" })).await;
@@ -585,7 +582,7 @@ async fn invitations_from_sending_to_accepting() {
     let nia = id.store().account_by_email("nia@example.com").await.unwrap().unwrap();
     assert_eq!(
         (nia.email_verified_source.as_str(), nia.signup_realm.as_str()),
-        ("invitation", "acme"),
+        ("invitation", "gateway"),
         "a mailed link proves the address"
     );
     assert_eq!(b.post(&accept, json!({ "token": token, "password": "a long passphrase for nia" })).await.status, 410);
@@ -595,7 +592,7 @@ async fn invitations_from_sending_to_accepting() {
     // Someone with an account accepts signed in to it; the role replaces theirs at the scope.
     let (s, v) = invite(
         &ada_t,
-        json!({ "email": "bob@example.com", "role": "acme.auditor", "scope": "organisation:org_1", "deliver": "link" }),
+        json!({ "email": "bob@example.com", "role": "gw.auditor", "scope": "organisation:org_1", "deliver": "link" }),
     )
     .await;
     assert_eq!(s, 201);
@@ -613,11 +610,11 @@ async fn invitations_from_sending_to_accepting() {
         .fetch_all(id.store().pool())
         .await
         .unwrap();
-    assert_eq!(roles, ["acme.auditor"]);
+    assert_eq!(roles, ["gw.auditor"]);
 
     // The account page's own invitations: accept one, decline another.
-    invite(&ada_t, json!({ "email": "bob@example.com", "role": "acme.viewer", "scope": "acme.workspace:ws_1" })).await;
-    invite(&ada_t, json!({ "email": "bob@example.com", "role": "acme.viewer", "scope": "acme.workspace:ws_2" })).await;
+    invite(&ada_t, json!({ "email": "bob@example.com", "role": "gw.viewer", "scope": "gw.workspace:ws_1" })).await;
+    invite(&ada_t, json!({ "email": "bob@example.com", "role": "gw.viewer", "scope": "gw.workspace:ws_2" })).await;
     let a = bobs.get(&format!("{}/ui-api/v1/account/invitations", id.public)).await;
     let mine = a.json["invitations"].as_array().unwrap().clone();
     assert_eq!(mine.len(), 2, "{a:?}");
@@ -644,16 +641,15 @@ async fn invitations_from_sending_to_accepting() {
     // Another product's pending invitation at the scope is not replaced by this one.
     id.sql(
         "INSERT INTO invitations (id, token_hash, email, role, scope_type, scope_id, realm, invited_by, emailed, labels, expires_at)
-         VALUES ('inv_other', '\\x00', 'dan@example.com', 'shop.user', 'organisation', 'org_1', 'acme', 'someone', false, '{}', now() + interval '1 day')",
+         VALUES ('inv_other', '\\x00', 'dan@example.com', 'shop.user', 'organisation', 'org_1', 'gateway', 'someone', false, '{}', now() + interval '1 day')",
     )
     .await;
     let (s, v) =
-        invite(&ada_t, json!({ "email": "dan@example.com", "role": "acme.viewer", "scope": "organisation:org_1" }))
-            .await;
+        invite(&ada_t, json!({ "email": "dan@example.com", "role": "gw.viewer", "scope": "organisation:org_1" })).await;
     assert_eq!((s, code(&v)), (409, Some("invitation_exists")), "{v}");
 
     // An address nobody confirmed sees nothing sent to it, and takes nothing.
-    invite(&ada_t, json!({ "email": "bob@example.com", "role": "acme.viewer", "scope": "acme.workspace:ws_2" })).await;
+    invite(&ada_t, json!({ "email": "bob@example.com", "role": "gw.viewer", "scope": "gw.workspace:ws_2" })).await;
     id.sql(&format!("UPDATE accounts SET email_verified_at = NULL WHERE id = '{bob}'")).await;
     let a = bobs.get(&format!("{}/ui-api/v1/account/invitations", id.public)).await;
     assert_eq!(a.json["invitations"], json!([]), "{a:?}");
@@ -666,8 +662,7 @@ async fn invitations_from_sending_to_accepting() {
 
     // Resent (a new link) and revoked.
     let (s, v) =
-        invite(&ada_t, json!({ "email": "zoe@example.com", "role": "acme.viewer", "scope": "organisation:org_1" }))
-            .await;
+        invite(&ada_t, json!({ "email": "zoe@example.com", "role": "gw.viewer", "scope": "organisation:org_1" })).await;
     assert_eq!(s, 201);
     let zoe = v["id"].as_str().unwrap().to_owned();
     let old = link_token(&id.mail().await.last().unwrap().mail.text);
@@ -695,18 +690,13 @@ async fn custom_roles_are_bound_renamed_and_deleted() {
     }
     person(&id, "idadmin@example.com", "id.admin", ScopeRef::platform()).await;
     let bob = person(&id, "bob@example.com", "", ScopeRef::platform()).await;
-    person(&id, "root@example.com", "acme.platform_admin", ScopeRef::platform()).await;
+    person(&id, "root@example.com", "gw.platform_admin", ScopeRef::platform()).await;
     let (admin_t, _) = as_person(&id, "idadmin@example.com").await;
     let (root_t, _) = as_person(&id, "root@example.com").await;
 
-    let (s, v) = call(
-        &id,
-        &admin_t,
-        Method::POST,
-        "/admin/v1/custom-roles",
-        Some(json!({ "product": "acme", "name": "tester" })),
-    )
-    .await;
+    let (s, v) =
+        call(&id, &admin_t, Method::POST, "/admin/v1/custom-roles", Some(json!({ "product": "gw", "name": "tester" })))
+            .await;
     assert_eq!((s, code(&v)), (422, Some("custom_roles_off")));
     let (s, _) = call(
         &id,
@@ -716,7 +706,7 @@ async fn custom_roles_are_bound_renamed_and_deleted() {
         Some(json!({ "product": "shop", "name": "tester" })),
     )
     .await;
-    assert_eq!(s, 403, "an acme admin is no shop admin");
+    assert_eq!(s, 403, "a gateway admin is no shop admin");
     let (s, v) = call(
         &id,
         &admin_t,

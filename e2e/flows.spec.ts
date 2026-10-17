@@ -60,18 +60,18 @@ test('a person signs up in Bazaar, where eight characters are enough', async ({ 
 	await expect(page.getByText(`${email} is confirmed.`)).toBeVisible();
 });
 
-test('acme admin signs in, finds the admin pages, and invites a colleague', async ({
+test('the gateway admin signs in, finds the admin pages, and invites a colleague', async ({
 	page,
 	browser
 }) => {
-	await authorize(page, 'acme');
+	await authorize(page, 'gateway');
 	await expect(
 		page.getByRole('link', { name: 'Create an account' }),
 		'accounts come by invitation here'
 	).toHaveCount(0);
 	await signIn(page, ADMIN.email, ADMIN.password);
 	await landsInApp(page);
-	await page.goto(`${REALMS.acme}/admin`);
+	await page.goto(`${REALMS.gateway}/admin`);
 	await expect(page.getByRole('heading', { name: 'Accounts', level: 1 })).toBeVisible();
 	await expect(page.getByRole('cell', { name: ADMIN.email })).toBeVisible();
 
@@ -99,7 +99,7 @@ test('acme admin signs in, finds the admin pages, and invites a colleague', asyn
 	await p.getByRole('button', { name: 'Create the account and accept' }).click();
 	await expect(p.getByText('Your account is ready and the invitation is accepted.')).toBeVisible();
 	// The new auditor signs in to the identity pages and sees the audit log.
-	await p.goto(`${REALMS.acme}/admin/audit`);
+	await p.goto(`${REALMS.gateway}/admin/audit`);
 	await p.waitForURL(/\/login\?flow=/);
 	await signIn(p, colleague, 'a long passphrase for the colleague');
 	await p.waitForURL(/\/admin\/audit$/);
@@ -124,7 +124,7 @@ test('a forgotten password: a link by mail, a new password, every session ends',
 	);
 
 	const since = new Date().toISOString();
-	await page.goto(`${REALMS.acme}/forgot-password`);
+	await page.goto(`${REALMS.gateway}/forgot-password`);
 	await page.getByLabel('Email').fill(email);
 	await page.getByRole('button', { name: 'Send the link' }).click();
 	await expect(page.getByText('a link is on its way')).toBeVisible();
@@ -138,7 +138,7 @@ test('a forgotten password: a link by mail, a new password, every session ends',
 	await page.getByRole('button', { name: 'Save the new password' }).click();
 	await expect(page.getByText('Your password is changed')).toBeVisible();
 
-	await authorize(page, 'acme');
+	await authorize(page, 'gateway');
 	await signIn(page, email, 'the first long passphrase');
 	await expect(page.getByText('The email address or the password is wrong.')).toBeVisible();
 	await signIn(page, email, 'the second long passphrase');
@@ -184,7 +184,7 @@ test('ten wrong passwords lock a new browser out', async ({ page, browser }) => 
 		.body.id;
 	await admin.post(`admin/accounts/${id}/email-confirmation`);
 	await admin.context.close();
-	await authorize(page, 'acme');
+	await authorize(page, 'gateway');
 	for (let i = 0; i < 10; i++) {
 		await signIn(page, email, `wrong guess ${i}`);
 		await expect(page.getByText(/password is wrong|Too many attempts/)).toBeVisible();
@@ -205,11 +205,11 @@ test('devices: one ends another; signing out returns to the application', async 
 	const other = await browser.newContext();
 	const op = await other.newPage();
 	for (const p of [page, op]) {
-		await authorize(p, 'acme');
+		await authorize(p, 'gateway');
 		await signIn(p, email, 'dora has a long passphrase');
 		await landsInApp(p);
 	}
-	await page.goto(`${REALMS.acme}/account/sessions`);
+	await page.goto(`${REALMS.gateway}/account/sessions`);
 	const rows = page.locator('tbody tr');
 	await expect(rows).toHaveCount(2);
 	await rows
@@ -217,20 +217,20 @@ test('devices: one ends another; signing out returns to the application', async 
 		.getByRole('button', { name: 'Sign out' })
 		.click();
 	await expect(rows).toHaveCount(1);
-	await op.goto(`${REALMS.acme}/account`);
+	await op.goto(`${REALMS.gateway}/account`);
 	await op.waitForURL(/\/login\?flow=/);
 
 	// RP-initiated sign-out without an id_token: the person confirms.
 	const q = new URLSearchParams({
-		client_id: 'demo-acme',
-		post_logout_redirect_uri: `${APP}/acme/`,
+		client_id: 'demo-gw',
+		post_logout_redirect_uri: `${APP}/gw/`,
 		state: 'bye'
 	});
-	await page.goto(`${REALMS.acme}/oidc/logout?${q}`);
+	await page.goto(`${REALMS.gateway}/oidc/logout?${q}`);
 	await page.waitForURL(/\/logout\?/);
 	await page.getByRole('button', { name: 'Sign out' }).click();
-	await page.waitForURL(`${APP}/acme/?state=bye`);
-	await page.goto(`${REALMS.acme}/account`);
+	await page.waitForURL(`${APP}/gw/?state=bye`);
+	await page.goto(`${REALMS.gateway}/account`);
 	await page.waitForURL(/\/login\?flow=/);
 	await other.close();
 	await admin.context.close();
@@ -250,8 +250,8 @@ test('Bazaar signs a new person up with Google', async ({ page }) => {
 	await expect(page.getByText('only way to sign in')).toBeVisible();
 });
 
-test('acme refuses a Google address without an invitation', async ({ page }) => {
-	await authorize(page, 'acme');
+test('the gateway refuses a Google address without an invitation', async ({ page }) => {
+	await authorize(page, 'gateway');
 	await page.getByRole('button', { name: 'Continue with Google' }).click();
 	await page.waitForURL(/127\.0\.0\.1:27380\/authorize/);
 	await page.getByLabel('Email').fill(address('stranger'));

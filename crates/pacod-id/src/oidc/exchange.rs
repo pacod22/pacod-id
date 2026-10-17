@@ -3,13 +3,13 @@
 //! - A product's facade swaps a caller's token for a 60-second token for pacod-id's admin API
 //!   (`aud` pacod-id, `act.sub` the product's client): pacod-id then decides on the caller's
 //!   own bindings.
-//! - With `requested_token_type` refresh_token, a delegated grant: acme's tester keeps
+//! - With `requested_token_type` refresh_token, a delegated grant: the gateway's tester keeps
 //!   working for an admin through a long run. It is bound to the admin's session, so signing
 //!   out stops it.
 //!
 //! The subject token is a user access token for the service's own product (checked: signature,
 //! `typ` at+jwt, issuer, expiry, audience, live session, active account), or a service token
-//! (pidt_, or an imported acma_).
+//! (pidt_, or an imported pgwa_).
 
 use std::collections::BTreeMap;
 
@@ -40,7 +40,7 @@ pub enum Holder {
 /// The prefix of a product's admin tokens imported as service tokens, by product.
 pub fn legacy_prefix(product: &str) -> Option<&'static str> {
     match product {
-        "acme" => Some("acma"),
+        "gw" => Some("pgwa"),
         _ => None,
     }
 }
