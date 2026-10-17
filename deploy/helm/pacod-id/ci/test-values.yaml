@@ -1,0 +1,70 @@
+# Values for "helm lint" and "helm template" (make chart-check). Every optional part is switched
+# on so that all templates are rendered. The secrets are placeholders and must never be used.
+image:
+  registry: registry.example.com/platform
+
+config: |
+  [[realm]]
+  name = "acme"
+  issuer = "https://id.example.com"
+  brand = "acme"
+
+  [[client]]
+  id = "acme-console"
+  realm = "acme"
+  kind = "confidential"
+  secret_env = "ACME_CONSOLE_SECRET"
+  redirect_uris = ["https://console.example.com/auth/callback"]
+  audience = "acme"
+
+secrets:
+  databaseUrl: postgres://pacod_id:not-a-real-password@postgres.example.internal:5432/pacod_id?sslmode=require
+  kek: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  kekOld: 2026-01=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  tokenPepper: not-a-real-pepper-0123456789
+  legacyPeppers: acme:not-a-real-pepper-0123456789
+  smtpPassword: not-a-real-password
+  bootstrapAdminPassword: not-a-real-password
+  extra:
+    ACME_CONSOLE_SECRET: not-a-real-client-secret-0123456789abcdef
+
+kekId: "2026-10"
+
+email:
+  smtpHost: smtp.example.com
+  smtpPort: "587"
+  smtpUsername: id@example.com
+  fromAddress: id@example.com
+  fromName: Sign-in
+
+bootstrapAdmin:
+  email: admin@example.com
+  realm: acme
+  roles: id.admin,acme.platform_admin
+
+trustedProxies: 10.0.0.0/8
+
+ingress:
+  className: nginx
+  hosts:
+    - host: id.example.com
+      tls:
+        secretName: id-example-com-tls
+    - host: id.bazaar.example
+
+networkPolicy:
+  publicFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+  internalFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: acme
+  metricsFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+
+serviceMonitor:
+  enabled: true
