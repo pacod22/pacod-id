@@ -157,7 +157,7 @@ One `[[realm]]` per issuer host.
 |---|---|---|
 | `name` | required | Lowercase letters, digits, `-` and `_`, starting with a letter. |
 | `issuer` | required | The public URL people use, `https://host[:port]`, without path or trailing slash. It is the `iss` of every token of the realm. No two realms may share a host. `http` is accepted for development only (see below). |
-| `brand` | required | `gateway`, `shop` or `bazaar`: the pages' theme and the mails' layout. |
+| `brand` | required | `gateway`, `cms`, `shop` or `bazaar`: the pages' theme and the mails' layout. |
 | `locales` | `["en", "bg", "de", "ru"]` | Languages of the pages. Each must be one of those four. |
 | `default_locale` | `"en"` | Must be one of `locales`. |
 | `mail_locales` | `["bg", "en"]` | Every mail carries all of these, in this order. |
