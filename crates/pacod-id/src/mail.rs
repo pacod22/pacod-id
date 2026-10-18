@@ -458,6 +458,14 @@ mod tests {
     }
 
     #[test]
+    fn the_kb_names_itself_in_the_base_colours() {
+        let m =
+            render(Template::VerifyEmail, &realm("kb", &["en"]), &params("https://id.example/verify-email?token=x"));
+        assert!(m.subject.ends_with("— pacod-kb"), "{}", m.subject);
+        assert!(m.html.contains("#0e6e57"), "the base teal");
+    }
+
+    #[test]
     fn bulgarian_comes_first_then_english() {
         let m = render(
             Template::VerifyEmail,

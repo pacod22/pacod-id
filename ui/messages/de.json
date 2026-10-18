@@ -210,6 +210,7 @@
 	"error_email_unavailable": "Diese Installation versendet keine E-Mails.",
 	"mail_brand_gateway": "pacod-gw",
 	"mail_brand_cms": "pacod-cms",
+	"mail_brand_kb": "pacod-kb",
 	"mail_brand_shop": "Shop",
 	"mail_brand_bazaar": "Basar",
 	"mail_footer": "Sie erhalten diese E-Mail, weil sie Ihr Konto bei {brand} betrifft.",
