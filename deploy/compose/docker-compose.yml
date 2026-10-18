@@ -37,7 +37,7 @@ services:
       context: ../..
       dockerfile: deploy/docker/pacod-id.Dockerfile
       target: pacod-id
-    image: pacod-id:dev
+    image: pacod-id:${PID_VERSION:-dev}
     depends_on:
       postgres:
         condition: service_healthy
