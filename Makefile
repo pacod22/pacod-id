@@ -1,4 +1,4 @@
-.PHONY: build test test-rust test-node test-python fmt lint verify test-services deny e2e \
+.PHONY: network build test test-rust test-node test-python fmt lint verify test-services deny e2e \
 	image image-mock compose-up compose-down measure chart-check conformance
 
 # The tests' PostgreSQL (scripts/test-services.sh). 127.0.0.1, not localhost: localhost may
@@ -55,9 +55,16 @@ image-mock:
 	docker build -f deploy/docker/pacod-id.Dockerfile --target mock-idp -t pacod-id-mock-idp:$(VERSION) .
 
 # The development stack (deploy/compose): pacod-id on http://127.0.0.1:26070, mail on :26026.
-COMPOSE := docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env
+# The app file plus its standalone copies of the shared components, on the shared network
+# pacod-net (pacod-demo/docs/NETWORK.md).
+COMPOSE := docker compose -f deploy/compose/docker-compose.yml \
+	-f deploy/compose/docker-compose.standalone.yml --env-file deploy/compose/.env
 
-compose-up:
+# The shared network every pacod stack joins; created once, kept by "down".
+network:
+	@docker network inspect pacod-net >/dev/null 2>&1 || docker network create pacod-net >/dev/null
+
+compose-up: network
 	deploy/compose/init-env.sh
 	$(COMPOSE) up -d --build --wait
 

@@ -42,7 +42,8 @@ All commands are run from the repository root. `dc` stands for the development s
 compose command, the same one the Makefile uses:
 
 ```sh
-dc() { docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env "$@"; }
+dc() { docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.standalone.yml \
+  --env-file deploy/compose/.env "$@"; }
 ```
 
 The image has no shell. The service's own commands (`pacod-id keys list` and the others in
@@ -336,7 +337,7 @@ Job the same environment and Secret as the service.
 
 pacod-id needs a PostgreSQL database of its own and a role that owns it and is not a
 superuser. The migrations create no extensions, so ownership of the database is enough. The
-development stack makes both at its first start (`deploy/compose/initdb/10-pacod-id.sh`); on
+development stack makes both at every start (`platform/postgres/id-db.sh`, idempotent); on
 your own server, as a superuser:
 
 ```sql
@@ -378,8 +379,18 @@ use the stack as the starting point and change what the end of this section list
 ### The development stack
 
 ```sh
-make compose-up      # deploy/compose/init-env.sh, then: dc up -d --build --wait
+make compose-up      # creates the network pacod-net, deploy/compose/init-env.sh, then: dc up -d --build --wait
 ```
+
+The stack follows the shared pacod convention (`pacod-demo/docs/NETWORK.md`): every container
+joins the external network `pacod-net` and has a name that is unique across all pacod repos.
+`deploy/compose/docker-compose.yml` holds pacod-id alone; `docker-compose.standalone.yml` holds
+the development copies of the shared components it uses (`pacod-postgres`, `pacod-db-init`,
+`pacod-mailpit`) and the mock Google. The full pacod stack (`pacod-demo`) loads only the first
+file and runs one shared PostgreSQL, mail sink and edge for every product. `platform/` holds
+pacod-id's share of that shared configuration: its database script
+(`platform/postgres/id-db.sh`), its route on the shared Caddy (`platform/caddy/id.caddy`) and
+its Prometheus job (`platform/prometheus/id.yml`).
 
 `init-env.sh` writes `deploy/compose/.env` once, readable by its owner only, with random values
 for the PostgreSQL superuser and the role `pacod_id`, `PID_KEK`, `PID_TOKEN_PEPPER`, the two
@@ -389,10 +400,11 @@ and `pacod-id-mock-idp:dev` and starts, as the project `pid-dev`:
 
 | Service | What it is |
 |---|---|
-| `postgres` | PostgreSQL 18.6. Its first start creates the role `pacod_id` and the database `pacod_id`. Volume `pg-data`. |
+| `pacod-postgres` | PostgreSQL 18.6. Volume `pacod-postgres-data`. |
+| `pacod-db-init` | Runs `platform/postgres/id-db.sh` at every start: the role `pacod_id` and the database `pacod_id`, created when missing. |
 | `pacod-id` | The service, with a read-only root file system and a small `/tmp`. Connects as `pacod_id`. Health check `/readyz`. |
-| `mailpit` | A mail sink: every mail the stack sends ends here, none leaves the machine. Web page on `127.0.0.1:26026`. |
-| `mock-idp` | Stands in for Google: issuer `http://127.0.0.1:26080` for the browser; pacod-id calls it at `http://mock-idp:7080` (`server_url`). |
+| `pacod-mailpit` | A mail sink: every mail the stack sends ends here, none leaves the machine. Web page on `127.0.0.1:26026`. |
+| `id-mock-idp` | Stands in for Google: issuer `http://127.0.0.1:26080` for the browser; pacod-id calls it at `http://id-mock-idp:7080` (`server_url`). |
 
 The configuration is `deploy/compose/pacod-id.toml`: one realm `shop` at
 `http://127.0.0.1:26070`, sign-up open, with the mock Google; a confidential client `dev-app`
