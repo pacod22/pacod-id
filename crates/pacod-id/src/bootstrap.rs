@@ -42,6 +42,7 @@ pub struct Bootstrap {
     pub client_secrets: BTreeMap<String, String>,
     /// A random id for this process, for leases and the instances table.
     pub instance_id: String,
+    /// PID_LOG_FORMAT: JSON unless it is `text` (any case); see [`crate::logging`].
     pub log_json: bool,
     /// Where mail goes: SMTP from PID_SMTP_*, a list in memory in tests, or nowhere.
     pub mail: Option<crate::mail::Transport>,
@@ -238,7 +239,7 @@ impl Bootstrap {
             password_cost,
             client_secrets,
             instance_id: crate::crypto::tokens::new_id("ins"),
-            log_json: env("PID_LOG_FORMAT").is_none_or(|f| f != "text"),
+            log_json: crate::logging::json_format(env("PID_LOG_FORMAT").as_deref()),
             mail,
             bootstrap_admin,
             google_secrets,
@@ -325,6 +326,15 @@ audience = "pacod-gw"
         assert_eq!(b.public_listen.port(), 8070);
         assert_eq!(b.client_secrets["console"].len(), 42);
         assert!(b.log_json);
+    }
+
+    #[test]
+    fn log_format_is_json_unless_text() {
+        for (value, json) in [("text", false), ("TEXT", false), ("json", true), ("Json", true), ("plain", true)] {
+            let mut vars = BASE.to_vec();
+            vars.push(("PID_LOG_FORMAT", value));
+            assert_eq!(resolve(&vars).unwrap().log_json, json, "{value}");
+        }
     }
 
     #[test]

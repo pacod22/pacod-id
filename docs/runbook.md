@@ -278,8 +278,9 @@ environment only. Error messages name the variable and the file, never the value
 | `PID_TRUSTED_PROXIES` | behind a proxy | none | Proxies whose `X-Forwarded-For` is believed: addresses, CIDR ranges and the word `private_ranges`, comma-separated (section 8). |
 | `PID_ARGON2_M_KIB` | no | `19456` | Memory of one password hash in KiB (Argon2id, 2 passes). Values below the default count as the default. |
 | `PID_UI_DIR` | no | `ui/build` (image: `/usr/share/pacod-id/ui`) | The hosted pages' build. |
-| `PID_LOG` | no | `info,sqlx=warn` | Log filter, in the syntax of `tracing`'s `EnvFilter`. |
-| `PID_LOG_FORMAT` | no | JSON | `text` for plain lines; any other value gives JSON, one object per line. |
+| `PID_LOG` | no | `info,sqlx=warn` | Log level: `debug`, `info`, `warn` or `error` (any case; `warning` is `warn`), or a filter in the syntax of `tracing`'s `EnvFilter` (`info,sqlx=warn`). Any other value gives the default, and the log's first line says so (section 15, "Logs"). |
+| `PID_LOG_FORMAT` | no | `json` | `json` or `text`, any case; any other value gives JSON, one object per line. |
+| `SERVICE_NAME` | no | `pacod-id` | The `service` of every log line: the compose service name. |
 | `PID_SMTP_HOST` | no | – | The SMTP server. Without it no mail is sent (section 13). |
 | `PID_SMTP_PORT` | no | 587, 465 or 25 by `PID_SMTP_TLS` | The SMTP port. |
 | `PID_SMTP_TLS` | no | `starttls` | `starttls`, `tls` or `none`; with `PID_SMTP_HOST`, any other value stops the start. |
@@ -451,7 +452,7 @@ dc down -v           # stop and delete the database
    one, and pin it by digest.
 9. **The first administrator**: remove `PID_BOOTSTRAP_ADMIN_*` once it has signed in
    (section 9).
-10. Keep `PID_LOG_FORMAT` at JSON (the default) for a log collector.
+10. Keep `PID_LOG_FORMAT` at `json` (the default) for a log collector.
 
 ### Make targets
 
@@ -960,8 +961,40 @@ queries of sections 13 and 14, and the log.
 
 ### Logs
 
-The log goes to standard output, as JSON by default (`PID_LOG_FORMAT=text` for plain lines),
-filtered by `PID_LOG` (default `info,sqlx=warn`; for example `debug,sqlx=warn` to see more).
+The log follows the shared pacod convention (`pacod-demo/docs/LOGGING.md`): one event per line
+on standard output, the same keys in every product.
+
+- **Level**, `PID_LOG` (default `info,sqlx=warn`): `debug`, `info`, `warn` or `error` in any case
+  (`warning` is `warn`), or an `EnvFilter` directive, for example `debug,sqlx=warn` to see more.
+  A plain `debug` also shows sqlx's queries; add `,sqlx=warn` to keep them out. A value that is
+  neither a level nor a valid directive (a single word must be a level) gives the default, and
+  the first line of the log is a warning that names it.
+- **Format**, `PID_LOG_FORMAT`: `json` (the default) or `text`, in any case; any other value gives
+  JSON. The development and conformance stacks set `text` (`${PID_LOG_FORMAT:-text}` in their
+  compose files).
+- **Service**, `SERVICE_NAME` (default `pacod-id`): the compose service name, which the compose
+  files set.
+
+Each JSON line holds `timestamp` (RFC 3339, UTC, milliseconds), `level` (lower case), `service`,
+`logger` (the Rust module, or the target of a library's line) and `message`, in this order, then
+the event's fields at the top level with their JSON types (an error's text in `error`). A field
+named like one of the five keys is written with a trailing underscore (`message_`). There are no
+host names, process ids, nested `fields` objects or colour codes.
+
+```json
+{"timestamp":"2026-10-23T06:41:07.695Z","level":"info","service":"pacod-id","logger":"pacod_id::app","message":"pacod-id is up","public":"0.0.0.0:8070","internal":"0.0.0.0:8071","metrics":"0.0.0.0:9170"}
+{"timestamp":"2026-10-23T06:52:13.004Z","level":"warn","service":"pacod-id","logger":"pacod_id::mail","message":"a mail was not sent","error":"connection refused","template":"verify_email"}
+```
+
+Text has the same content on one line: time, level (upper case, five characters wide), service,
+`logger:`, message, then `key=value` (values with spaces in quotes), without colour codes:
+
+```text
+2026-10-23T06:41:07.695Z INFO  pacod-id pacod_id::app: pacod-id is up public=0.0.0.0:8070 internal=0.0.0.0:8071 metrics=0.0.0.0:9170
+2026-10-23T06:52:13.004Z WARN  pacod-id pacod_id::mail: a mail was not sent error="connection refused" template=verify_email
+```
+
+The compose files rotate every container's log (Docker's `json-file`, 5 files of 10 MB).
 
 pacod-id writes no line per request. It logs its start ("pacod-id is up", with the three
 addresses), the hosted pages loaded or missing, key rotations (the key ids), catalogue

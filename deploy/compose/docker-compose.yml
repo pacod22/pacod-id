@@ -2,7 +2,8 @@
 # components it uses (pacod-postgres, pacod-db-init, pacod-mailpit) come from
 # docker-compose.standalone.yml in the development stack, or from the full stack (pacod-demo),
 # which loads this file and provides them once. The naming convention is in
-# pacod-demo/docs/NETWORK.md.
+# pacod-demo/docs/NETWORK.md, the logging convention (rotation, PID_LOG, PID_LOG_FORMAT,
+# SERVICE_NAME) in pacod-demo/docs/LOGGING.md.
 #
 #   make compose-up      secrets in deploy/compose/.env (made once, random), build, start
 #   make compose-down    stop; the database volume stays (docker compose ... down -v drops it)
@@ -23,8 +24,15 @@
 
 name: pid-dev
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
 services:
   pacod-id:
+    logging: *logging
     build:
       context: ../..
       dockerfile: deploy/docker/pacod-id.Dockerfile
@@ -52,7 +60,10 @@ services:
       PID_SMTP_TLS: none
       PID_EMAIL_FROM_ADDRESS: ${PID_EMAIL_FROM_ADDRESS:-id@pacod-id.dev.test}
       PID_EMAIL_FROM_NAME: ${PID_EMAIL_FROM_NAME:-pacod-id (development)}
-      PID_LOG_FORMAT: text
+      # Text for the terminal here; pacod-id's own default is json (pacod-demo/docs/LOGGING.md).
+      PID_LOG_FORMAT: ${PID_LOG_FORMAT:-text}
+      PID_LOG: ${PID_LOG:-info,sqlx=warn}
+      SERVICE_NAME: pacod-id
     volumes:
       - ${PID_CONFIG_FILE:-./pacod-id.toml}:/etc/pacod-id/pacod-id.toml:ro
     # As in the Helm chart: nothing is written outside /tmp.
