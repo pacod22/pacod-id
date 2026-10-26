@@ -1,5 +1,5 @@
-# pacod-id on the shared network pacod-net: the app file. It holds pacod-id alone; the shared
-# components it uses (pacod-postgres, pacod-db-init, pacod-mailpit) come from
+# pacod-id on the shared networks pacod-net and pacod-admin-net: the app file. It holds pacod-id
+# alone; the shared components it uses (pacod-postgres, pacod-db-init, pacod-mailpit) come from
 # docker-compose.standalone.yml in the development stack, or from the full stack (pacod-demo),
 # which loads this file and provides them once. The naming convention is in
 # pacod-demo/docs/NETWORK.md, the logging convention (rotation, PID_LOG, PID_LOG_FORMAT,
@@ -64,6 +64,10 @@ services:
       PID_LOG_FORMAT: ${PID_LOG_FORMAT:-text}
       PID_LOG: ${PID_LOG:-info,sqlx=warn}
       SERVICE_NAME: pacod-id
+      # Every interface, because this file publishes the internal listener on 26071 and a
+      # published port never reaches pacod-admin-net. The full stack publishes nothing and binds
+      # it to pacod-id-internal, its name on pacod-admin-net alone (pacod-demo/overlays/id.yml).
+      PID_INTERNAL_LISTEN: 0.0.0.0:8071
     volumes:
       - ${PID_CONFIG_FILE:-./pacod-id.toml}:/etc/pacod-id/pacod-id.toml:ro
     # As in the Helm chart: nothing is written outside /tmp.
@@ -74,10 +78,17 @@ services:
       - '127.0.0.1:26070:8070'
       - '127.0.0.1:26071:8071'
       - '127.0.0.1:26072:9170'
+    # Products' servers reach the internal listener on pacod-admin-net, by the alias; the browser
+    # and everything else on pacod-net reach the public one.
     networks:
-      - pacod-net
+      pacod-net:
+      pacod-admin-net:
+        aliases: [pacod-id-internal]
     restart: unless-stopped
 
 networks:
   pacod-net:
+    external: true
+  # Internal (no route out), made by "make network": the listeners only servers reach.
+  pacod-admin-net:
     external: true

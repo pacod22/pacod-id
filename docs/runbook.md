@@ -119,9 +119,13 @@ requests in flight, gives up the maintenance lease and removes its instance row.
 | 8071 | `PID_INTERNAL_LISTEN` | Internal listener | The products' servers (backends and BFFs) on a private network. Never through the proxy. |
 | 9170 | `PID_METRICS_LISTEN` | Metrics and probes | Prometheus and health checks. |
 
-The variables take `address:port`, for example `0.0.0.0:8070`. The image's Docker health
-check calls `http://127.0.0.1:9170/readyz`; if you move the metrics listener, change the
-health check as well.
+The variables take `address:port`, for example `0.0.0.0:8070`, or a host name with a port,
+for example `pacod-id-internal:8071`. A host name is resolved when the listener binds, and the
+listener takes the first address that can be bound. In Docker, a name that the container has on
+one network alone binds the listener to that network: the pacod stacks bind 8071 to
+`pacod-id-internal`, the alias pacod-id has on `pacod-admin-net` only (section 6). The image's
+Docker health check calls `http://127.0.0.1:9170/readyz`; if you move the metrics listener,
+change the health check as well.
 
 The development stack (section 6) publishes everything on `127.0.0.1` only:
 
@@ -380,11 +384,24 @@ use the stack as the starting point and change what the end of this section list
 ### The development stack
 
 ```sh
-make compose-up      # creates the network pacod-net, deploy/compose/init-env.sh, then: dc up -d --build --wait
+make compose-up      # creates the networks pacod-net and pacod-admin-net, deploy/compose/init-env.sh, then: dc up -d --build --wait
 ```
 
 The stack follows the shared pacod convention (`pacod-demo/docs/NETWORK.md`): every container
 joins the external network `pacod-net` and has a name that is unique across all pacod repos.
+`pacod-id` also joins `pacod-admin-net`, an internal network (no route out) for the listeners
+that only servers reach, under the alias `pacod-id-internal`; products' servers call
+`http://pacod-id-internal:8071` there. Here the internal listener stays on every interface,
+because 26071 publishes it to the host and a published port never reaches an internal network.
+The full stack publishes nothing and binds it to the alias, so that the rest of `pacod-net`
+cannot reach it. `make network` creates both networks and stops when `pacod-admin-net` exists
+without being internal; with plain `docker compose`, create them first:
+
+```sh
+docker network create pacod-net
+docker network create --internal pacod-admin-net
+```
+
 `deploy/compose/docker-compose.yml` holds pacod-id alone; `docker-compose.standalone.yml` holds
 the development copies of the shared components it uses (`pacod-postgres`, `pacod-db-init`,
 `pacod-mailpit`) and the mock Google. The full pacod stack (`pacod-demo`) loads only the first
@@ -437,7 +454,10 @@ dc down -v           # stop and delete the database
 
 1. **TLS in front of port 8070.** Put a reverse proxy (Caddy, nginx, Traefik) in front and
    publish only the proxy. Do not publish 8071 and 9170 on a public address; products reach
-   8071 over a private Docker network. Section 8 lists what the proxy must do.
+   8071 over a private Docker network. Bind 8071 to that network alone
+   (`PID_INTERNAL_LISTEN=pacod-id-internal:8071`, the alias on `pacod-admin-net`), not to
+   `0.0.0.0`: on `0.0.0.0` every container that shares any network with pacod-id reaches it.
+   Section 8 lists what the proxy must do.
 2. **Issuers.** Every realm's `issuer` is `https://<its host>`, with DNS pointing at the proxy.
 3. **`PID_TRUSTED_PROXIES`** set to the proxy's address (section 8).
 4. **Real SMTP**: `PID_SMTP_HOST`, `PID_SMTP_PORT`, `PID_SMTP_TLS` (`starttls` or `tls`),
